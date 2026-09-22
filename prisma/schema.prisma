@@ -1,0 +1,190 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id              Int        @id @default(autoincrement())
+  username        String     @unique
+  email           String?    @unique
+  passwordHash    String?
+  nickname        String?
+  avatar          String?
+  bio             String?
+  // user | admin | importer
+  role            String     @default("user")
+  // 后台管理角色（仅 role=admin 时有效）
+  adminRoleId     Int?
+  adminRole       AdminRole? @relation(fields: [adminRoleId], references: [id])
+  // free / pro / vip ...
+  membershipLevel String     @default("free")
+  membershipUntil DateTime?
+  status          String     @default("active")
+  createdAt       DateTime   @default(now())
+  prompts         Prompt[]
+  likes           Like[]
+  favorites       Favorite[]
+  comments        Comment[]
+  adminLogs       AdminLog[]
+}
+
+// 提示词分类
+model Category {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  nameEn    String
+  slug      String   @unique
+  sort      Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@index([sort])
+}
+
+model Prompt {
+  id            Int      @id @default(autoincrement())
+  userId        Int
+  title         String
+  content       String   @db.Text
+  description   String?  @db.Text
+  type          String   @default("text")
+  category      String   @default("其他")
+  language      String   @default("zh")
+  promptCode    String?
+  model         String?
+  tags          String[]
+  media         Json     @default("[]")
+  coverUrl      String?
+  featured      Boolean  @default(false)
+  // 热门推荐
+  hot           Boolean  @default(false)
+  sourceSite    String?
+  sourceAuthor  String?
+  sourceUrl     String?
+  likeCount     Int      @default(0)
+  favoriteCount Int      @default(0)
+  viewCount     Int      @default(0)
+  commentCount  Int      @default(0)
+  // draft | pending | published | rejected
+  status        String   @default("published")
+  rejectReason  String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  // 发布时间：首次上线时间，与 updatedAt 独立
+  publishedAt   DateTime?
+
+  user      User       @relation(fields: [userId], references: [id])
+  likes     Like[]
+  favorites Favorite[]
+  comments  Comment[]
+
+  @@index([status, createdAt(sort: Desc)])
+  @@index([type])
+  @@index([category])
+  @@index([language])
+  @@index([featured])
+  @@index([hot])
+  @@index([sourceUrl])
+}
+
+model Like {
+  userId    Int
+  promptId   Int
+  createdAt DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id])
+  prompt Prompt @relation(fields: [promptId], references: [id])
+
+  @@id([userId, promptId])
+}
+
+model Favorite {
+  userId    Int
+  promptId   Int
+  createdAt DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id])
+  prompt Prompt @relation(fields: [promptId], references: [id])
+
+  @@id([userId, promptId])
+}
+
+// 站点配置（键值对，value 为 JSON 字符串）
+model SiteSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+// 自动翻译缓存
+model TranslationCache {
+  hash       String
+  sourceLang String
+  targetLang String
+  translated String @db.Text
+  updatedAt  DateTime @updatedAt
+
+  @@id([hash, sourceLang, targetLang])
+}
+
+// ─── 后台 RBAC ───
+
+// 管理员角色（多角色多权限）
+model AdminRole {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  // 权限列表：["prompt:read","prompt:write","prompt:delete","user:manage","role:manage","setting:write","log:read", ...] 或 ["*"] 表示全部权限
+  permissions String[] @default([])
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  users       User[]
+}
+
+// 管理员操作日志（只增不删不改）
+model AdminLog {
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  user       User     @relation(fields: [userId], references: [id])
+  // 操作类型：create | update | delete | batch_update | login | logout
+  action     String
+  // 操作对象类型：prompt | user | category | role | setting | comment
+  targetType String?
+  targetId   Int?
+  // 详细变更内容（JSON 字符串）
+  detail     String?  @db.Text
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([targetType, createdAt(sort: Desc)])
+}
+
+// ─── 用户互动 ───
+
+// 提示词评论
+model Comment {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  promptId  Int
+  content   String   @db.Text
+  // 回复目标评论 ID（null=顶级评论）
+  parentId  Int?
+  parent    Comment?  @relation("CommentReplies", fields: [parentId], references: [id])
+  replies   Comment[] @relation("CommentReplies")
+  // published | hidden | deleted
+  status    String   @default("published")
+  likeCount Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user   User   @relation(fields: [userId], references: [id])
+  prompt Prompt @relation(fields: [promptId], references: [id])
+
+  @@index([promptId, createdAt(sort: Desc)])
+  @@index([userId])
+  @@index([parentId])
+}

@@ -1,0 +1,73 @@
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import { requireAdmin } from "@/lib/auth";
+import { ADMIN_BASE } from "@/lib/admin-path";
+import LogoutButton from "@/components/LogoutButton";
+
+export const dynamic = "force-dynamic";
+
+const NAV = [
+  { href: ADMIN_BASE, label: "仪表盘", icon: "📊" },
+  { href: `${ADMIN_BASE}/prompts`, label: "提示词管理", icon: "📝" },
+  { href: `${ADMIN_BASE}/categories`, label: "分类管理", icon: "🗂️" },
+  { href: `${ADMIN_BASE}/users`, label: "用户管理", icon: "👥" },
+  { href: `${ADMIN_BASE}/roles`, label: "角色权限", icon: "🔑" },
+  { href: `${ADMIN_BASE}/logs`, label: "操作日志", icon: "📋" },
+  { href: `${ADMIN_BASE}/settings/basic`, label: "基本设置", icon: "⚙️" },
+  { href: `${ADMIN_BASE}/settings/publish`, label: "发布设置", icon: "📤" },
+  { href: `${ADMIN_BASE}/settings/membership`, label: "会员设置", icon: "💎" },
+  { href: `${ADMIN_BASE}/settings/site`, label: "网站设置", icon: "🌐" },
+];
+
+export const metadata = { title: "管理后台" };
+
+export default async function AdminLayout({ children }: { children: React.ReactNode }) {
+  const admin = await requireAdmin();
+  if (!admin) {
+    redirect(`/login?next=${encodeURIComponent(ADMIN_BASE)}`);
+  }
+
+  return (
+    <div
+      className="grid min-h-screen grid-cols-1 lg:grid-cols-[210px_1fr]"
+      style={{
+        backgroundImage:
+          "radial-gradient(1000px 600px at 110% -10%, rgba(99,102,241,0.12), transparent 60%), radial-gradient(800px 600px at -20% 110%, rgba(139,92,246,0.08), transparent 60%)",
+      }}
+    >
+      <aside className="border-b border-zinc-800/80 bg-[#0b0f29]/85 px-3 py-5 backdrop-blur lg:min-h-screen lg:border-b-0 lg:border-r">
+        <div className="mb-5 flex items-center gap-2 px-2">
+          <img src="/logo/icon.svg" alt="完整提示词" className="h-7 w-7" />
+          <span className="text-base font-bold tracking-wide text-gold-gradient">完整提示词</span>
+          <span className="rounded border border-emerald-700/60 px-1.5 py-0.5 text-[10px] tracking-widest text-emerald-400">
+            ADMIN
+          </span>
+        </div>
+        <nav className="flex flex-row gap-1 overflow-x-auto lg:flex-col">
+          {NAV.map((n) => (
+            <Link
+              key={n.href}
+              href={n.href}
+              className="flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-sm text-zinc-300 transition hover:bg-emerald-800/60 hover:text-white"
+            >
+              <span>{n.icon}</span>
+              {n.label}
+            </Link>
+          ))}
+        </nav>
+        <div className="mt-6 hidden border-t border-zinc-800/80 pt-4 text-xs text-zinc-500 lg:block">
+          <Link href="/" className="px-2 hover:text-emerald-400">← 返回前台</Link>
+          <p className="mt-3 px-2 leading-relaxed">管理员：{admin.username}</p>
+          <div className="mt-3 px-2">
+            <LogoutButton />
+          </div>
+          <div className="mt-4 flex items-center gap-2 px-2">
+            <img src="/logo/icon.svg" alt="完整提示词" className="h-5 w-5 opacity-70" />
+            <span className="text-[10px] tracking-widest text-zinc-600">FULL PROMPT</span>
+          </div>
+        </div>
+      </aside>
+      <div className="min-w-0 p-5 lg:p-7">{children}</div>
+    </div>
+  );
+}

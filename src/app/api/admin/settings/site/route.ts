@@ -1,0 +1,89 @@
+import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
+import { requireAdmin } from "@/lib/auth";
+import { db } from "@/lib/db";
+import { PERMISSIONS, requirePerm, logAdminAction, getClientIp } from "@/lib/rbac";
+
+export const dynamic = "force-dynamic";
+
+const DEFAULT_SITE = {
+  siteName: "完整提示词",
+  siteNameEn: "CompletePrompt",
+  siteDescription: "",
+  searchKeywords: "",
+  footerText: "",
+  allowRegister: true,
+  logoIcon: "",
+  favicon: "",
+  appIcon: "",
+};
+
+// GET /api/admin/settings/site
+export async function GET() {
+  const admin = await requireAdmin();
+  if (!admin) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+
+  const { user, ok } = await requirePerm(PERMISSIONS.SETTING_READ);
+  if (!user || !ok) return NextResponse.json({ error: "no permission" }, { status: 403 });
+
+  const row = await db.siteSetting.findUnique({ where: { key: "site" } });
+  let data = { ...DEFAULT_SITE };
+  if (row) {
+    try {
+      data = { ...DEFAULT_SITE, ...JSON.parse(row.value) };
+    } catch {}
+  }
+  return NextResponse.json(data);
+}
+
+const siteSchema = z.object({
+  siteName: z.string().max(100).optional(),
+  siteNameEn: z.string().max(100).optional(),
+  siteDescription: z.string().max(2000).optional(),
+  searchKeywords: z.string().max(500).optional(),
+  footerText: z.string().max(500).optional(),
+  allowRegister: z.boolean().optional(),
+  logoIcon: z.string().max(500).optional(),
+  favicon: z.string().max(500).optional(),
+  appIcon: z.string().max(500).optional(),
+});
+
+// PUT /api/admin/settings/site
+export async function PUT(req: NextRequest) {
+  const admin = await requireAdmin();
+  if (!admin) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+
+  const { user, ok } = await requirePerm(PERMISSIONS.SETTING_WRITE);
+  if (!user || !ok) return NextResponse.json({ error: "no permission" }, { status: 403 });
+
+  const parsed = siteSchema.safeParse(await req.json().catch(() => null));
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.issues[0]?.message || "参数错误" }, { status: 400 });
+  }
+
+  // 读取现有值合并
+  const row = await db.siteSetting.findUnique({ where: { key: "site" } });
+  let current = { ...DEFAULT_SITE };
+  if (row) {
+    try {
+      current = { ...DEFAULT_SITE, ...JSON.parse(row.value) };
+    } catch {}
+  }
+  const merged = { ...current, ...parsed.data };
+
+  await db.siteSetting.upsert({
+    where: { key: "site" },
+    update: { value: JSON.stringify(merged) },
+    create: { key: "site", value: JSON.stringify(merged) },
+  });
+
+  await logAdminAction({
+    userId: admin.id,
+    action: "update",
+    targetType: "setting",
+    detail: JSON.stringify({ section: "site", keys: Object.keys(parsed.data) }),
+    ip: await getClientIp(),
+  });
+
+  return NextResponse.json({ ok: true, data: merged });
+}

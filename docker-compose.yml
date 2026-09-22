@@ -1,0 +1,54 @@
+# Docker Compose — PostgreSQL + Meilisearch（宝塔面板部署）
+# 用法：
+#   1. 上传 docker-compose.yml + .env.meili + .env.db 到服务器 /www/wwwroot/prompthub/
+#   2. 编辑 .env.db 设置 POSTGRES_PASSWORD
+#   3. docker compose up -d
+#   4. 宝塔 Nginx 反代 meilisearch: http://127.0.0.1:7700 → 域名 + HTTPS
+
+services:
+  postgres:
+    image: postgres:18-alpine                 # PG 18 Alpine 轻量版
+    container_name: prompthub-pg
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5432:5432"                 # 只绑定本地，不暴露公网
+    env_file:
+      - .env.db
+    volumes:
+      - ./pgdata:/var/lib/postgresql/data      # 数据持久化
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  meilisearch:
+    image: getmeili/meilisearch:v1.12
+    container_name: meilisearch
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:7700:7700"
+    env_file:
+      - .env.meili
+    volumes:
+      - ./meili_data:/meili_data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7700/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    depends_on:
+      postgres:
+        condition: healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
