@@ -1,7 +1,11 @@
 # 完整提示词版本号 0.2 / CompletePrompt
 
 收集、分享、发现优质 AI 提示词的社区网站。内置 8400+ 条真实创作过程提示词（图片/视频/音频/文本），其中 4650 条含与提示词分段精确对应的实拍效果图与视频截图，全部本地化存储。
+PC
+[image](https://github.com/ainaxiya/CompletePrompt/blob/214691d3282ec41f3aa231b9f841b8d1050e0445/PC.png)
 
+mobile
+[image](https://github.com/ainaxiya/CompletePrompt/blob/214691d3282ec41f3aa231b9f841b8d1050e0445/mobile.png)
 ## 功能总览
 
 ### 前台
