@@ -29,46 +29,51 @@ function sniffImage(buf: Buffer): boolean {
 // POST /api/user/avatar/upload  用户头像上传
 // FormData: file=<File>  → sharp 压缩为 webp，保存到 public/uploads/avatars/
 export async function POST(req: NextRequest) {
-  const user = await getCurrentUser();
-  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  try {
+    const user = await getCurrentUser();
+    if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  const form = await req.formData().catch(() => null);
-  const file = form?.get("file");
-  if (!(file instanceof File)) {
-    return NextResponse.json({ error: "no file" }, { status: 400 });
+    const form = await req.formData().catch(() => null);
+    const file = form?.get("file");
+    if (!(file instanceof File)) {
+      return NextResponse.json({ error: "no file" }, { status: 400 });
+    }
+
+    if (file.size > MAX_SIZE) {
+      return NextResponse.json({ error: "文件过大（最大 5MB）" }, { status: 413 });
+    }
+    if (file.size < 12) {
+      return NextResponse.json({ error: "invalid file" }, { status: 400 });
+    }
+
+    const buf = Buffer.from(await file.arrayBuffer());
+    if (!sniffImage(buf)) {
+      return NextResponse.json({ error: "unsupported file type, only image allowed" }, { status: 400 });
+    }
+
+    const dir = path.join(process.cwd(), "public", "uploads", "avatars");
+    await mkdir(dir, { recursive: true });
+
+    // sharp 压缩：resize 到 256x256 内（保持比例，cover 裁切），输出 webp
+    const name = `${user.id}-${Date.now()}.webp`;
+    const processed = await sharp(buf)
+      .resize(256, 256, { fit: "cover", position: "centre" })
+      .webp({ quality: 82 })
+      .toBuffer();
+
+    await writeFile(path.join(dir, name), processed);
+
+    const url = `/uploads/avatars/${name}`;
+
+    // 更新用户 avatar 字段
+    await db.user.update({
+      where: { id: user.id },
+      data: { avatar: url },
+    });
+
+    return NextResponse.json({ url, type: "image", size: processed.length });
+  } catch (e) {
+    console.error("[avatar/upload] failed:", e);
+    return NextResponse.json({ error: "图片处理失败，请更换图片后重试" }, { status: 500 });
   }
-
-  if (file.size > MAX_SIZE) {
-    return NextResponse.json({ error: "文件过大（最大 5MB）" }, { status: 413 });
-  }
-  if (file.size < 12) {
-    return NextResponse.json({ error: "invalid file" }, { status: 400 });
-  }
-
-  const buf = Buffer.from(await file.arrayBuffer());
-  if (!sniffImage(buf)) {
-    return NextResponse.json({ error: "unsupported file type, only image allowed" }, { status: 400 });
-  }
-
-  const dir = path.join(process.cwd(), "public", "uploads", "avatars");
-  await mkdir(dir, { recursive: true });
-
-  // sharp 压缩：resize 到 256x256 内（保持比例，cover 裁切），输出 webp
-  const name = `${user.id}-${Date.now()}.webp`;
-  const processed = await sharp(buf)
-    .resize(256, 256, { fit: "cover", position: "centre" })
-    .webp({ quality: 82 })
-    .toBuffer();
-
-  await writeFile(path.join(dir, name), processed);
-
-  const url = `/uploads/avatars/${name}`;
-
-  // 更新用户 avatar 字段
-  await db.user.update({
-    where: { id: user.id },
-    data: { avatar: url },
-  });
-
-  return NextResponse.json({ url, size: processed.length });
 }

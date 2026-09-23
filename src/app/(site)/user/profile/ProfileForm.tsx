@@ -1,7 +1,8 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import UserAvatar from "@/components/UserAvatar";
+import UniversalUploader from "@/components/UniversalUploader";
 
 export type ProfileUser = {
   id: number;
@@ -18,34 +19,8 @@ export default function ProfileForm({ initial }: { initial: ProfileUser }) {
   const [avatar, setAvatar] = useState(initial.avatar || "");
   const [bio, setBio] = useState(initial.bio || "");
   const [saving, setSaving] = useState(false);
-  const [uploading, setUploading] = useState(false);
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
-  const fileRef = useRef<HTMLInputElement>(null);
-
-  const uploadAvatar = async (file: File) => {
-    setErr("");
-    if (file.size > 10 * 1024 * 1024) {
-      setErr("头像不能超过 10MB");
-      return;
-    }
-    setUploading(true);
-    try {
-      const fd = new FormData();
-      fd.append("file", file);
-      const res = await fetch("/api/user/avatar/upload", { method: "POST", body: fd });
-      const d = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setErr(d.error || "上传失败");
-        return;
-      }
-      setAvatar(d.url);
-    } catch {
-      setErr("上传失败");
-    } finally {
-      setUploading(false);
-    }
-  };
 
   const save = async () => {
     setSaving(true);
@@ -82,15 +57,17 @@ export default function ProfileForm({ initial }: { initial: ProfileUser }) {
       {/* 头像 */}
       <div className="mb-4 flex items-center gap-4">
         <UserAvatar src={avatar} name={nickname || initial.username} size={64} />
-        <div className="flex gap-2">
-          <button
-            type="button"
-            disabled={uploading}
-            onClick={() => fileRef.current?.click()}
-            className="rounded-lg bg-zinc-800 px-3 py-1.5 text-sm text-zinc-300 transition hover:bg-zinc-700 disabled:opacity-50"
-          >
-            {uploading ? "上传中…" : "更换头像"}
-          </button>
+        <div className="flex items-center gap-2">
+          <UniversalUploader
+            multiple={false}
+            accept="image"
+            compact
+            maxImageMB={5}
+            endpoint="/api/user/avatar/upload"
+            hint="更换头像"
+            onUploaded={(files) => files[0] && setAvatar(files[0].url)}
+            onRejected={() => setErr("头像仅支持图片且不能超过 5MB")}
+          />
           {avatar && (
             <button
               type="button"
@@ -101,17 +78,6 @@ export default function ProfileForm({ initial }: { initial: ProfileUser }) {
             </button>
           )}
         </div>
-        <input
-          ref={fileRef}
-          type="file"
-          accept="image/jpeg,image/png,image/webp"
-          className="hidden"
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) uploadAvatar(f);
-            e.target.value = "";
-          }}
-        />
       </div>
 
       {/* 昵称 */}
