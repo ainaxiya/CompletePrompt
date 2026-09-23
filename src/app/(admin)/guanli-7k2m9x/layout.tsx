@@ -37,7 +37,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     >
       <aside className="border-b border-zinc-800/80 bg-[#0b0f29]/85 px-3 py-5 backdrop-blur lg:min-h-screen lg:border-b-0 lg:border-r">
         <div className="mb-5 flex items-center gap-2 px-2">
-          <img src="/logo/icon.svg" alt="完整提示词" className="h-7 w-7" />
+          <img src="/logo/icon.png" alt="完整提示词" className="h-7 w-7 rounded-md object-cover" />
           <span className="text-base font-bold tracking-wide text-gold-gradient">完整提示词</span>
           <span className="rounded border border-emerald-700/60 px-1.5 py-0.5 text-[10px] tracking-widest text-emerald-400">
             ADMIN
@@ -62,7 +62,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             <LogoutButton />
           </div>
           <div className="mt-4 flex items-center gap-2 px-2">
-            <img src="/logo/icon.svg" alt="完整提示词" className="h-5 w-5 opacity-70" />
+            <img src="/logo/icon.png" alt="完整提示词" className="h-5 w-5 rounded object-cover opacity-80" />
             <span className="text-[10px] tracking-widest text-zinc-600">FULL PROMPT</span>
           </div>
         </div>

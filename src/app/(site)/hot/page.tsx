@@ -33,7 +33,7 @@ export default async function HotPage({
       take: PAGE_SIZE,
       select: {
         id: true, title: true, type: true, category: true, tags: true,
-        sourceAuthor: true, likeCount: true, content: true,
+        sourceAuthor: true, likeCount: true, content: true, description: true,
         coverUrl: true, featured: true,
       },
     }),

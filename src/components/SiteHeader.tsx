@@ -60,7 +60,13 @@ function Icon({ name, className = "h-4 w-4" }: { name: string; className?: strin
   }
 }
 
-export default function SiteHeader({ siteName }: { siteName: string }) {
+export default function SiteHeader({
+  siteName,
+  logoIcon = "/logo/icon.png",
+}: {
+  siteName: string;
+  logoIcon?: string;
+}) {
   const locale = useLocale();
   const pathname = usePathname();
   const router = useRouter();
@@ -139,13 +145,14 @@ export default function SiteHeader({ siteName }: { siteName: string }) {
     <header className="site-header sticky top-0 z-50 border-b border-zinc-800/70 bg-zinc-950/95 backdrop-blur-md">
       {/* 第一行：导航栏 */}
       <div className="mx-auto flex h-14 max-w-6xl items-center gap-2 px-4 sm:gap-3">
-        <Link href="/" className="mr-1 flex shrink-0 items-center" aria-label="完整提示词">
-          {/* 桌面端：完整 LOGO（暗色版） */}
+        <Link href="/" className="mr-1 flex shrink-0 items-center gap-2" aria-label={siteName}>
+          {/* 灯泡品牌图标（后台可在网站设置中替换） */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo/full-cn-dark.svg" alt="完整提示词" className="hidden h-8 w-auto sm:block" />
-          {/* 移动端：图标版 */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo/icon.svg" alt="完整提示词" className="h-8 w-8 sm:hidden" />
+          <img src={logoIcon} alt={siteName} className="h-8 w-8 rounded-lg object-cover" />
+          {/* 站点名：桌面端显示，移动端只留图标 */}
+          <span className="hidden text-base font-semibold tracking-wide text-zinc-100 sm:inline">
+            {siteName}
+          </span>
         </Link>
 
         <nav className="flex items-center gap-1">

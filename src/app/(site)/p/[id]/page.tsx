@@ -138,6 +138,7 @@ export default async function PromptDetail({
     select: {
       id: true, title: true, type: true, category: true, tags: true,
       sourceAuthor: true, likeCount: true, coverUrl: true, featured: true,
+      description: true, content: true,
     },
   });
 

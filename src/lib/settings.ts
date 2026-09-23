@@ -1,7 +1,20 @@
 import { db } from "./db";
 
-// 默认站点配置（后台"基本设置/发布设置/会员设置"持久化到 SiteSetting）
+// 默认站点配置（后台"网站设置/基本设置/发布设置/会员设置"持久化到 SiteSetting）
 export const DEFAULT_SETTINGS = {
+  // site：后台「网站设置」页（标题/关键字/图标）持久化的键，优先级高于 basic
+  site: {
+    siteName: "",
+    siteNameEn: "",
+    siteDescription: "",
+    searchKeywords: "",
+    footerText: "",
+    // null = 未在「网站设置」里显式配置，回退 basic.allowRegister
+    allowRegister: null as boolean | null,
+    logoIcon: "",
+    favicon: "",
+    appIcon: "",
+  },
   basic: {
     siteName: "完整提示词",
     siteNameEn: "CompletePrompt",
@@ -58,7 +71,7 @@ export async function getSettings(): Promise<SiteSettings> {
   const rows = await db.siteSetting.findMany();
   const map = Object.fromEntries(rows.map((r) => [r.key, r.value]));
   const merged = structuredClone(DEFAULT_SETTINGS) as any;
-  for (const key of ["basic", "publish", "membership"]) {
+  for (const key of ["site", "basic", "publish", "membership"]) {
     if (map[key]) {
       try {
         merged[key] = { ...merged[key], ...JSON.parse(map[key]) };
@@ -69,7 +82,7 @@ export async function getSettings(): Promise<SiteSettings> {
   return merged;
 }
 
-export async function saveSetting(key: "basic" | "publish" | "membership", value: unknown) {
+export async function saveSetting(key: "site" | "basic" | "publish" | "membership", value: unknown) {
   const json = JSON.stringify(value);
   await db.siteSetting.upsert({
     where: { key },
@@ -81,3 +94,53 @@ export async function saveSetting(key: "basic" | "publish" | "membership", value
 
 // 供非 async 模块使用的同步默认值
 export const defaultSettings = DEFAULT_SETTINGS;
+
+const DEFAULT_KEYWORDS = [
+  "AI提示词", "prompt", "Midjourney", "即梦", "可灵",
+  "AI绘画", "AI视频", "CompletePrompt", "完整提示词",
+];
+
+/**
+ * 前台统一配置：后台「网站设置」(site 键) 的非空值覆盖 basic 默认值。
+ * 所有前台页面/元信息/注册开关都应只读这里，保证后台改了立即生效。
+ */
+export async function getPublicSite() {
+  const s = await getSettings();
+  const site = s.site;
+  const pick = (v: string | undefined | null, fallback: string) =>
+    v && v.trim() ? v.trim() : fallback;
+
+  const keywords = (site.searchKeywords || "")
+    .split(/[,，、；;\n\r\t]+|\s{2,}/)
+    .map((k) => k.trim())
+    .filter(Boolean);
+
+  // 早期上传的图标 URL 写在 public 根（/logo-icon-120.png 等），生产环境 404；
+  // 自动改写到 /site-assets/ 动态路由（favicon.ico 与内置默认同名，不做改写）
+  const LEGACY_ROOT_ASSETS = new Set(["logo-icon-120.png", "app-icon.png"]);
+  const toAssetUrl = (v?: string | null) => {
+    const u = (v || "").trim();
+    const m = u.match(/^\/([^/?]+)(\?.*)?$/);
+    if (m && LEGACY_ROOT_ASSETS.has(m[1])) return `/site-assets/${m[1]}${m[2] || ""}`;
+    return u;
+  };
+
+  const logoIcon = toAssetUrl(site.logoIcon);
+  const appIcon = toAssetUrl(site.appIcon) || "/icon-512.png";
+
+  return {
+    siteName: pick(site.siteName, s.basic.siteName),
+    siteNameEn: pick(site.siteNameEn, s.basic.siteNameEn),
+    description: pick(site.siteDescription, s.basic.siteDescription),
+    footerText: pick(site.footerText, s.basic.footerText),
+    keywords: keywords.length ? keywords : DEFAULT_KEYWORDS,
+    allowRegister: site.allowRegister ?? s.basic.allowRegister,
+    // 图标：后台上传后走 /site-assets/ 动态服务；未配置则回退内置品牌资源
+    logoIcon,
+    favicon: site.favicon || "/favicon.ico",
+    favicon32: site.favicon || "/favicon-32.png",
+    appIcon,
+    icon192: site.appIcon ? appIcon : "/icon-192.png",
+    appleIcon: site.appIcon ? appIcon : "/apple-touch-icon.png",
+  };
+}

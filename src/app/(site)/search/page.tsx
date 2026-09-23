@@ -102,6 +102,7 @@ export default async function SearchPage({
               id: h.id, title: h.title, type: h.type, category: h.category,
               tags: h.tags || [], sourceAuthor: h.sourceAuthor, likeCount: h.likeCount ?? 0,
               coverUrl: h.coverUrl || null, featured: !!h.featured,
+              description: h.description || null, content: h.content || null,
             }}
           />
         ))}

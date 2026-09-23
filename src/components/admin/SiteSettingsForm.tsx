@@ -35,23 +35,14 @@ export default function SiteSettingsForm({ initial }: Props) {
 
   const set = (k: keyof SiteData, v: any) => setF({ ...f, [k]: v });
 
-  const save = async () => {
+  const save = async (override?: Partial<SiteData>) => {
+    const data: SiteData = { ...f, ...override };
     setBusy(true);
     try {
       const r = await fetch("/api/admin/settings/site", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          siteName: f.siteName,
-          siteNameEn: f.siteNameEn,
-          siteDescription: f.siteDescription,
-          searchKeywords: f.searchKeywords,
-          footerText: f.footerText,
-          allowRegister: f.allowRegister,
-          logoIcon: f.logoIcon,
-          favicon: f.favicon,
-          appIcon: f.appIcon,
-        }),
+        body: JSON.stringify(data),
       });
       if (!r.ok) {
         const d = await r.json().catch(() => ({}));
@@ -66,16 +57,49 @@ export default function SiteSettingsForm({ initial }: Props) {
     }
   };
 
+  // 浏览器侧实际加载一次图片 URL，杜绝"接口 200 但文件 404"的假成功
+  const probeImage = (url: string) =>
+    new Promise<void>((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve();
+      img.onerror = () =>
+        reject(new Error("文件已保存到服务器，但返回的图片地址无法访问（HTTP 404），请重新部署后再试"));
+      img.src = url;
+    });
+
   const upload = async (key: (typeof UPLOAD_FILES)[number]["key"], filename: string, file: File) => {
     setUploading(key);
     try {
+      if (file.size > 2 * 1024 * 1024) {
+        alert("文件大小不能超过 2MB");
+        return;
+      }
       const fd = new FormData();
       fd.append("file", file);
       fd.append("filename", filename);
       const r = await fetch("/api/admin/settings/upload", { method: "POST", body: fd });
-      const d = await r.json();
-      if (!r.ok) throw new Error(d.error || "上传失败");
-      set(key, d.url);
+      // 容错：服务端异常时可能返回空响应体或 HTML（如 Nginx 413），不能直接 r.json()
+      const text = await r.text();
+      let d: any = null;
+      try {
+        d = text ? JSON.parse(text) : null;
+      } catch {
+        d = null;
+      }
+      if (!r.ok || !d) {
+        const hint =
+          r.status === 413
+            ? "文件超过 Nginx 上传限制（需调大 client_max_body_size）"
+            : !text
+              ? `服务器无响应（HTTP ${r.status}），可能是 public 目录无写入权限`
+              : text.slice(0, 200);
+        throw new Error(d?.error || hint || "上传失败");
+      }
+      // 先验证 URL 真的可访问，再更新表单并自动持久化（无需再手动点保存）
+      await probeImage(d.url);
+      const next = { ...f, [key]: d.url } as SiteData;
+      setF(next);
+      await save(next);
     } catch (e) {
       alert((e as Error).message);
     } finally {

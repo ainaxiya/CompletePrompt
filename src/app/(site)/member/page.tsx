@@ -183,6 +183,7 @@ export default async function MemberPage() {
                   likeCount: f.prompt.likeCount,
                   coverUrl: f.prompt.coverUrl,
                   featured: f.prompt.featured,
+                  content: f.prompt.content,
                 }}
               />
             ))}

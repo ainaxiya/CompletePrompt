@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { translate, type Locale } from "@/lib/i18n";
-import CardCover, { Placeholder } from "@/components/CardCover";
+import CardCover, { TextCover, Placeholder } from "@/components/CardCover";
+import { plainExcerpt } from "@/lib/excerpt";
 
 const TYPE_KEY: Record<string, "type.video" | "type.image" | "type.audio" | "type.text"> = {
   video: "type.video",
@@ -40,10 +41,16 @@ export default function PromptCard({
     sectionCount?: number;
     coverUrl?: string | null;
     featured?: boolean;
+    description?: string | null;
+    content?: string | null;
+    excerpt?: string | null;
   };
   locale?: Locale;
 }) {
   const tk = TYPE_KEY[p.type] || TYPE_KEY.text;
+  // 无封面时的文字摘要：显式 excerpt > 简介 description > 正文提纯
+  const excerptText =
+    p.excerpt || p.description || (p.content ? plainExcerpt(p.content, 90) : "");
   return (
     <Link
       href={`/p/${p.id}`}
@@ -52,9 +59,15 @@ export default function PromptCard({
       <div className="relative aspect-video w-full overflow-hidden bg-zinc-950/60">
         {p.coverUrl ? (
           <>
-            <CardCover src={p.coverUrl} title={p.title} />
+            <CardCover
+              src={p.coverUrl}
+              title={p.title}
+              fallback={excerptText ? <TextCover text={excerptText} type={p.type} /> : <Placeholder />}
+            />
             <span className="absolute inset-0 bg-gradient-to-t from-zinc-950/45 via-transparent to-transparent opacity-0 transition group-hover:opacity-100" />
           </>
+        ) : excerptText ? (
+          <TextCover text={excerptText} type={p.type} />
         ) : (
           <Placeholder />
         )}

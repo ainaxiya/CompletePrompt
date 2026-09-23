@@ -22,7 +22,7 @@ export default async function Home() {
     take: HOME_TAKE,
     select: {
       id: true, title: true, type: true, category: true, tags: true,
-      sourceAuthor: true, likeCount: true, content: true,
+      sourceAuthor: true, likeCount: true, content: true, description: true,
       coverUrl: true, featured: true,
     },
   });

@@ -25,3 +25,4 @@ bin/
 npm-debug.log*
 .DS_Store
 Thumbs.db
+.env.meili

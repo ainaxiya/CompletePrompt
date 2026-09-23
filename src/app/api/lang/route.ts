@@ -18,5 +18,6 @@ export async function GET(req: NextRequest) {
     path: "/",
     maxAge: 60 * 60 * 24 * 365,
   });
-  return NextResponse.redirect(new URL(next, req.url));
+  // 相对路径 Location：浏览器按当前域名解析，反代/多域名下都不会跳错
+  return new NextResponse(null, { status: 307, headers: { Location: next } });
 }

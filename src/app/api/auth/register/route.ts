@@ -3,7 +3,7 @@ import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
 import { signToken, setAuthCookie } from "@/lib/auth";
-import { getSettings } from "@/lib/settings";
+import { getPublicSite } from "@/lib/settings";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
 
 const schema = z.object({
@@ -20,8 +20,8 @@ export async function POST(req: NextRequest) {
   if (!rateLimit(`register:${clientIp(req)}`, 8, 600_000)) {
     return NextResponse.json({ error: "操作过于频繁，请稍后再试" }, { status: 429 });
   }
-  const settings = await getSettings();
-  if (!settings.basic.allowRegister) {
+  const site = await getPublicSite();
+  if (!site.allowRegister) {
     return NextResponse.json({ error: "registration closed" }, { status: 403 });
   }
   const body = await req.json().catch(() => null);

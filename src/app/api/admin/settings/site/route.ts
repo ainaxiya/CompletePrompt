@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { saveSetting } from "@/lib/settings";
 import { PERMISSIONS, requirePerm, logAdminAction, getClientIp } from "@/lib/rbac";
 
 export const dynamic = "force-dynamic";
@@ -71,11 +72,8 @@ export async function PUT(req: NextRequest) {
   }
   const merged = { ...current, ...parsed.data };
 
-  await db.siteSetting.upsert({
-    where: { key: "site" },
-    update: { value: JSON.stringify(merged) },
-    create: { key: "site", value: JSON.stringify(merged) },
-  });
+  // 走 saveSetting：落库同时清空设置缓存，前台立即生效
+  await saveSetting("site", merged);
 
   await logAdminAction({
     userId: admin.id,

@@ -1,32 +1,35 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import { getSettings } from "@/lib/settings";
+import { getPublicSite } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
 
 export async function generateMetadata(): Promise<Metadata> {
-  const settings = await getSettings();
+  const site = await getPublicSite();
+  const titleDefault = `${site.siteName} - ${site.siteNameEn}`;
   return {
     metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"),
     title: {
-      default: `${settings.basic.siteName} - AI Prompt Community`,
-      template: `%s | ${settings.basic.siteName}`,
+      default: titleDefault,
+      template: `%s | ${site.siteName}`,
     },
-    description: settings.basic.siteDescription,
-    keywords: ["AI提示词", "prompt", "Midjourney", "即梦", "可灵", "AI绘画", "AI视频", "CompletePrompt", "完整提示词"],
+    description: site.description,
+    keywords: site.keywords,
     icons: {
-      icon: "/favicon.ico",
-      apple: "/apple-touch-icon.png",
+      icon: site.favicon,
+      apple: site.appleIcon,
       other: [
-        { url: "/favicon-32.png", sizes: "32x32", type: "image/png" },
-        { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
-        { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+        { url: site.favicon32, sizes: "32x32", type: "image/png" },
+        { url: site.icon192, sizes: "192x192", type: "image/png" },
+        { url: site.appIcon, sizes: "512x512", type: "image/png" },
       ],
     },
     openGraph: {
-      title: `${settings.basic.siteName} - AI Prompt Community`,
-      description: settings.basic.siteDescription,
-      images: ["/og-image.png"],
+      title: titleDefault,
+      description: site.description,
+      // 后台上传了自定义图标时优先用作分享图，否则用内置 og 图
+      images: site.appIcon !== "/icon-512.png" ? [site.appIcon] : ["/og-image.png"],
+      siteName: site.siteName,
     },
   };
 }
