@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
 import { redirect } from "next/navigation";
@@ -41,7 +42,7 @@ export default async function AdminLogsPage({
   const action = sp.action || "";
   const targetType = sp.targetType || "";
 
-  const where: any = {};
+  const where: Prisma.AdminLogWhereInput = {};
   if (userId) where.userId = userId;
   if (action) where.action = action;
   if (targetType) where.targetType = targetType;
