@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import RichEditor from "@/components/RichEditor";
 import CoverUploader from "@/components/CoverUploader";
+import OptionDropdown from "@/components/OptionDropdown";
 import { ADMIN_BASE } from "@/lib/admin-path";
 
 type Cat = { slug: string; name: string };
@@ -34,12 +35,14 @@ export default function PromptForm({ promptId }: { promptId?: number }) {
     type: "text",
     category: "",
     model: "",
+    sourceUrl: "",
     coverUrl: "" as string | null,
     content: "",
     description: "",
     tagsText: "",
     status: "published",
     featured: false,
+    commentsClosed: false,
   });
 
   useEffect(() => {
@@ -66,12 +69,14 @@ export default function PromptForm({ promptId }: { promptId?: number }) {
             type: d.type || "text",
             category: d.category || "",
             model: d.model || "",
+            sourceUrl: d.sourceUrl || "",
             coverUrl: d.coverUrl || null,
             content: d.content || "",
             description: d.description || "",
             tagsText: (d.tags || []).join(", "),
             status: d.status || "published",
             featured: !!d.featured,
+            commentsClosed: !!d.commentsClosed,
           });
           // 已有简介的旧数据不做静默覆盖
           if (d.description) {
@@ -167,12 +172,14 @@ export default function PromptForm({ promptId }: { promptId?: number }) {
       type: f.type,
       category: f.category,
       model: f.model.trim() || null,
+      sourceUrl: f.sourceUrl.trim(),
       coverUrl: f.coverUrl || null,
       content: f.content,
       description: f.description.trim(),
       tags: f.tagsText.split(/[,，]/).map((s) => s.trim()).filter(Boolean).slice(0, 8),
       status: extra?.status || f.status,
       featured: extra?.featured ?? f.featured,
+      commentsClosed: f.commentsClosed,
     };
     if (extra?.rejectReason !== undefined) payload.rejectReason = extra.rejectReason;
     try {
@@ -249,6 +256,16 @@ export default function PromptForm({ promptId }: { promptId?: number }) {
       <label className={labelCls}>模型（可选）</label>
       <input value={f.model} onChange={(e) => set("model", e.target.value)} className={`${inputCls} mb-4`} />
 
+      <label className={labelCls}>原作品链接（可选，转载出处）</label>
+      <input
+        value={f.sourceUrl}
+        onChange={(e) => set("sourceUrl", e.target.value)}
+        type="url"
+        inputMode="url"
+        placeholder="https://…"
+        className={`${inputCls} mb-4`}
+      />
+
       <label className={labelCls}>封面图</label>
       <p className="mb-1.5 text-xs text-zinc-600">不上传时自动从内容中提取第一张图片作为封面</p>
       <div className="mb-4">
@@ -305,12 +322,16 @@ export default function PromptForm({ promptId }: { promptId?: number }) {
         {!isEdit && (
           <label className="flex items-center gap-2 text-sm text-zinc-400">
             状态
-            <select value={f.status} onChange={(e) => set("status", e.target.value)}
-              className="rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1 text-sm outline-none">
-              <option value="published">直接发布</option>
-              <option value="pending">待审核</option>
-              <option value="draft">草稿</option>
-            </select>
+            <OptionDropdown
+              value={f.status}
+              size="md"
+              onChange={(v) => set("status", v)}
+              options={[
+                { value: "published", label: "直接发布", tone: "green" },
+                { value: "pending", label: "待审核", tone: "amber" },
+                { value: "draft", label: "草稿", tone: "zinc" },
+              ]}
+            />
           </label>
         )}
         <label className="flex items-center gap-2 text-sm text-zinc-400">
@@ -321,6 +342,15 @@ export default function PromptForm({ promptId }: { promptId?: number }) {
             className="h-4 w-4 accent-emerald-500"
           />
           加精 ★
+        </label>
+        <label className="flex items-center gap-2 text-sm text-zinc-400">
+          <input
+            type="checkbox"
+            checked={f.commentsClosed}
+            onChange={(e) => set("commentsClosed", e.target.checked)}
+            className="h-4 w-4 accent-rose-500"
+          />
+          关闭本文评论（旧评论保留显示）
         </label>
       </div>
 

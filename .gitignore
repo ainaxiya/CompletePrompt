@@ -26,3 +26,6 @@ npm-debug.log*
 .DS_Store
 Thumbs.db
 .env.meili
+
+# Meili 同步守护进程水位线
+.meili-sync-state.json

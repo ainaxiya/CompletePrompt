@@ -13,15 +13,15 @@ const DEFAULT_SITE = {
   siteDescription: "",
   searchKeywords: "",
   footerText: "",
-  allowRegister: true,
   logoIcon: "",
   favicon: "",
   appIcon: "",
+  meiliSyncSeconds: 30,
 };
 
 export default async function AdminSiteSettingsPage() {
   const admin = await requireAdmin();
-  if (!admin) redirect(`/login?next=${encodeURIComponent(ADMIN_BASE)}`);
+  if (!admin) redirect(`${ADMIN_BASE}/login`);
 
   const row = await db.siteSetting.findUnique({ where: { key: "site" } });
   let initial = { ...DEFAULT_SITE };

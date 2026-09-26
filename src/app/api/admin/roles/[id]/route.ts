@@ -45,7 +45,7 @@ export async function PUT(req: NextRequest, ctx: { params: Promise<{ id: string 
   const role = await db.adminRole.update({ where: { id: rid }, data: d });
 
   await logAdminAction({
-    userId: admin.id,
+    adminId: admin.id,
     action: "update",
     targetType: "role",
     targetId: rid,
@@ -85,7 +85,7 @@ export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: str
   await db.adminRole.delete({ where: { id: rid } });
 
   await logAdminAction({
-    userId: admin.id,
+    adminId: admin.id,
     action: "delete",
     targetType: "role",
     targetId: rid,

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import OptionDropdown from "@/components/OptionDropdown";
 
 function useSettings() {
   const [data, setData] = useState<any>(null);
@@ -42,33 +43,6 @@ const inputCls = "w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2
 const labelCls = "mb-1 block text-sm text-zinc-400";
 const cardCls = "rounded-xl border border-zinc-800 bg-zinc-900/50 p-5 mb-4";
 
-export function BasicForm() {
-  const all = useSettings();
-  const [f, setF] = useState<any>(null);
-  useEffect(() => { if (all) setF({ ...all.basic }); }, [all]);
-  if (!f) return <p className="py-10 text-center text-zinc-500">加载中…</p>;
-  const set = (k: string, v: any) => setF({ ...f, [k]: v });
-
-  return (
-    <div className="max-w-2xl">
-      <div className={cardCls}>
-        <label className={labelCls}>网站名称</label>
-        <input value={f.siteName} onChange={(e) => set("siteName", e.target.value)} className={`${inputCls} mb-4`} />
-        <label className={labelCls}>网站描述（SEO description）</label>
-        <textarea value={f.siteDescription} rows={3} onChange={(e) => set("siteDescription", e.target.value)}
-          className={`${inputCls} mb-4`} />
-        <label className={labelCls}>页脚文字</label>
-        <input value={f.footerText} onChange={(e) => set("footerText", e.target.value)} className={`${inputCls} mb-4`} />
-        <label className="flex items-center gap-2 text-sm text-zinc-300">
-          <input type="checkbox" checked={!!f.allowRegister} onChange={(e) => set("allowRegister", e.target.checked)} />
-          开放新用户注册（关闭后注册接口与注册页均不可用）
-        </label>
-      </div>
-      <SaveBar section="basic" value={f} />
-    </div>
-  );
-}
-
 export function PublishForm() {
   const all = useSettings();
   const [f, setF] = useState<any>(null);
@@ -82,10 +56,17 @@ export function PublishForm() {
     <div className="max-w-2xl">
       <div className={cardCls}>
         <label className={labelCls}>发布模式</label>
-        <select value={f.mode} onChange={(e) => set("mode", e.target.value)} className={`${inputCls} mb-2`}>
-          <option value="auto">发布即上线（免审核）</option>
-          <option value="review">先审核后上线（进入待审核队列）</option>
-        </select>
+        <div className="mb-2">
+          <OptionDropdown
+            value={f.mode}
+            size="md"
+            onChange={(v) => set("mode", v)}
+            options={[
+              { value: "auto", label: "发布即上线（免审核）", tone: "green" },
+              { value: "review", label: "先审核后上线", tone: "amber" },
+            ]}
+          />
+        </div>
         <p className="text-xs text-zinc-500">切换为审核模式后，用户新发布的内容需在「提示词管理」中通过后才公开。</p>
       </div>
 
@@ -121,76 +102,82 @@ export function PublishForm() {
   );
 }
 
-type Tier = { level: string; price: number; name: { zh: string; en: string }; features: { zh: string; en: string } };
+// ─── 注册设置（原会员设置）：注册总开关 + 扩展字段收集策略 ───
+const FIELD_OPTS = [
+  { value: "off", label: "不收集", tone: "zinc" as const },
+  { value: "optional", label: "可选填", tone: "amber" as const },
+  { value: "required", label: "必填", tone: "green" as const },
+];
 
-export function MembershipForm() {
+export function RegisterSettingsForm() {
   const all = useSettings();
-  const [tiers, setTiers] = useState<Tier[]>([]);
-  useEffect(() => { if (all) setTiers(all.membership.tiers.map((x: any) => structuredClone(x))); }, [all]);
-  if (tiers.length === 0) return <p className="py-10 text-center text-zinc-500">加载中…</p>;
+  const [f, setF] = useState<any>(null);
+  useEffect(() => {
+    if (all) {
+      setF({
+        allowRegister: all.register?.allowRegister ?? true,
+        fields: {
+          email: all.register?.fields?.email ?? "off",
+          nickname: all.register?.fields?.nickname ?? "optional",
+          phone: all.register?.fields?.phone ?? "off",
+        },
+      });
+    }
+  }, [all]);
+  if (!f) return <p className="py-10 text-center text-zinc-500">加载中…</p>;
 
-  const update = (i: number, patch: Partial<Tier>) =>
-    setTiers(tiers.map((t, idx) => (idx === i ? { ...t, ...patch } : t)));
-  const add = () =>
-    setTiers([
-      ...tiers,
-      { level: "tier" + Date.now(), price: 0, name: { zh: "新等级", en: "New" }, features: { zh: "", en: "" } },
-    ]);
-  const remove = (i: number) => {
-    if (!confirm("删除该会员等级？")) return;
-    setTiers(tiers.filter((_, idx) => idx !== i));
-  };
+  const setField = (k: string, v: string) => setF({ ...f, fields: { ...f.fields, [k]: v } });
+
+  const rows = [
+    { key: "email", name: "邮箱", desc: "用于找回密码、接收通知" },
+    { key: "nickname", name: "昵称", desc: "前台展示名称，不填则默认显示账号" },
+    { key: "phone", name: "手机号", desc: "用于账号安全验证" },
+  ];
 
   return (
-    <div className="max-w-3xl">
-      <p className="mb-4 text-sm text-zinc-500">
-        level 为系统标识（free 为默认免费等级，授予用户时使用）；价格单位：元/月。删除等级不影响已授予用户，但建议保留 free。
-      </p>
-      {tiers.map((tier, i) => (
-        <div key={i} className={cardCls}>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={labelCls}>level 标识</label>
-              <input value={tier.level} disabled={tier.level === "free"}
-                onChange={(e) => update(i, { level: e.target.value })} className={`${inputCls} disabled:opacity-50`} />
+    <div className="max-w-2xl">
+      <div className={cardCls}>
+        <label className="flex items-center gap-2 text-sm text-zinc-200">
+          <input
+            type="checkbox"
+            checked={!!f.allowRegister}
+            onChange={(e) => setF({ ...f, allowRegister: e.target.checked })}
+          />
+          开放前台会员注册
+        </label>
+        <p className="mt-1.5 text-xs text-zinc-500">
+          关闭后注册接口与前台注册页均不可用，已有会员登录不受影响。
+        </p>
+      </div>
+
+      <div className={cardCls}>
+        <h3 className="mb-3 text-sm font-medium text-zinc-200">注册需要填写的内容</h3>
+        <p className="mb-4 text-xs text-zinc-500">
+          账号、密码为系统固定必填项；以下资料可分别设置为「不收集 / 可选填 / 必填」，设置后立即作用于前台注册页。
+        </p>
+        <div className="space-y-3">
+          {rows.map((r) => (
+            <div key={r.key} className="flex items-center justify-between gap-4 rounded-lg border border-zinc-800 bg-zinc-950/40 px-4 py-3">
+              <div>
+                <p className="text-sm text-zinc-200">{r.name}</p>
+                <p className="text-xs text-zinc-500">{r.desc}</p>
+              </div>
+              <OptionDropdown
+                value={f.fields[r.key]}
+                options={FIELD_OPTS}
+                onChange={(v) => setField(r.key, v)}
+                size="md"
+                align="right"
+              />
             </div>
-            <div>
-              <label className={labelCls}>价格（元/月）</label>
-              <input type="number" value={tier.price}
-                onChange={(e) => update(i, { price: parseInt(e.target.value) || 0 })} className={inputCls} />
-            </div>
-            <div>
-              <label className={labelCls}>中文名</label>
-              <input value={tier.name.zh} onChange={(e) => update(i, { name: { ...tier.name, zh: e.target.value } })}
-                className={inputCls} />
-            </div>
-            <div>
-              <label className={labelCls}>英文名</label>
-              <input value={tier.name.en} onChange={(e) => update(i, { name: { ...tier.name, en: e.target.value } })}
-                className={inputCls} />
-            </div>
-            <div className="col-span-2">
-              <label className={labelCls}>权益说明（中文）</label>
-              <input value={tier.features.zh} onChange={(e) => update(i, { features: { ...tier.features, zh: e.target.value } })}
-                className={inputCls} />
-            </div>
-            <div className="col-span-2">
-              <label className={labelCls}>Features (English)</label>
-              <input value={tier.features.en} onChange={(e) => update(i, { features: { ...tier.features, en: e.target.value } })}
-                className={inputCls} />
-            </div>
-          </div>
-          {tier.level !== "free" && (
-            <button onClick={() => remove(i)} className="mt-3 text-xs text-rose-400 hover:underline">
-              删除该等级
-            </button>
-          )}
+          ))}
         </div>
-      ))}
-      <button onClick={add} className="mb-4 rounded-lg border border-dashed border-zinc-600 px-4 py-2 text-sm text-zinc-300 hover:border-emerald-500 hover:text-emerald-300">
-        + 新增会员等级
-      </button>
-      <SaveBar section="membership" value={{ tiers }} />
+        <p className="mt-3 text-xs text-zinc-600">
+          邮箱与手机号均做全站唯一校验；当前版本仅普通会员一个级别。
+        </p>
+      </div>
+
+      <SaveBar section="register" value={f} />
     </div>
   );
 }

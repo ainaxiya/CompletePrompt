@@ -19,7 +19,8 @@ type Row = {
   createdAt: string;
   updatedAt: string;
   publishedAt: string | null;
-  user: { id: number; username: string };
+  user: { id: number; username: string; nickname?: string | null };
+  adminAuthor?: { id: number; username: string; nickname?: string | null } | null;
 };
 
 const STATUS_TABS = [
@@ -180,7 +181,7 @@ export default function PromptManager({
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="按标题搜索…"
-            className="min-w-[220px] flex-1 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-sm outline-none focus:border-emerald-500"
+            className="min-w-[160px] flex-1 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-sm outline-none focus:border-emerald-500 sm:min-w-[220px]"
           />
           <button className="rounded-lg bg-zinc-800 px-4 py-1.5 text-sm hover:bg-zinc-700">搜索</button>
         </form>
@@ -306,7 +307,20 @@ export default function PromptManager({
                   <br />
                   {TYPE_LABELS[p.type] || p.type}
                 </td>
-                <td className="px-3 py-2.5 text-xs text-zinc-400">{p.user.username}</td>
+                <td className="px-3 py-2.5 text-xs text-zinc-400">
+                  {p.adminAuthor ? (
+                    <span className="inline-flex flex-col gap-0.5">
+                      <span className="text-indigo-300">
+                        {p.adminAuthor.nickname || p.adminAuthor.username}
+                      </span>
+                      <span className="rounded bg-indigo-500/15 px-1 py-0.5 text-[10px] text-indigo-300 w-fit">
+                        管理员发布
+                      </span>
+                    </span>
+                  ) : (
+                    p.user.nickname || p.user.username
+                  )}
+                </td>
                 <td className="px-3 py-2.5 text-xs text-zinc-500">
                   ♥ {p.likeCount} · 👁 {p.viewCount}
                 </td>

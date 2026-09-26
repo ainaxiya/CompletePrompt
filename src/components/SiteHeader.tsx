@@ -144,7 +144,7 @@ export default function SiteHeader({
   return (
     <header className="site-header sticky top-0 z-50 border-b border-zinc-800/70 bg-zinc-950/95 backdrop-blur-md">
       {/* 第一行：导航栏 */}
-      <div className="mx-auto flex h-14 max-w-6xl items-center gap-2 px-4 sm:gap-3">
+      <div className="mx-auto flex h-14 max-w-6xl items-center gap-2 px-3 sm:gap-3 sm:px-4">
         <Link href="/" className="mr-1 flex shrink-0 items-center gap-2" aria-label={siteName}>
           {/* 灯泡品牌图标（后台可在网站设置中替换） */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -155,7 +155,8 @@ export default function SiteHeader({
           </span>
         </Link>
 
-        <nav className="flex items-center gap-1">
+        {/* 手机端导航由底部 MobileTabBar 承接，<md 整块隐藏 */}
+        <nav className="hidden items-center gap-1 md:flex">
           {navItem("/", "home", t(locale, "nav.home"), true)}
           {navItem("/hot", "flame", t(locale, "nav.hot"))}
           {navItem("/categories", "grid", t(locale, "nav.categories"))}
@@ -194,7 +195,7 @@ export default function SiteHeader({
         <div className="mx-auto max-w-6xl">{searchBox(true)}</div>
       </div>
       {mobileSearch && (
-        <div className="bg-zinc-950/60 px-4 py-3 sm:hidden">{searchBox(false)}</div>
+        <div className="bg-zinc-950/60 px-3 py-3 sm:hidden">{searchBox(false)}</div>
       )}
     </header>
   );

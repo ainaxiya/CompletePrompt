@@ -28,7 +28,28 @@ const patchSchema = z.object({
   type: z.enum(["text", "image", "video", "audio"]).optional(),
   category: z.string().max(50).optional(),
   model: z.string().max(60).nullable().optional(),
+  // 原作品链接：http(s) 绝对地址或站内相对路径；空串视为清空
+  sourceUrl: z
+    .string()
+    .max(500)
+    .refine(
+      (v) => {
+        if (v.startsWith("/")) return true;
+        try {
+          const u = new URL(v);
+          return u.protocol === "http:" || u.protocol === "https:";
+        } catch {
+          return false;
+        }
+      },
+      "原作品链接必须是 http(s) 地址"
+    )
+    .nullable()
+    .optional()
+    .or(z.literal("")),
   tags: z.array(z.string().max(30)).max(8).optional(),
+  // 单篇关闭评论
+  commentsClosed: z.boolean().optional(),
   description: z.string().max(2000).nullable().optional(),
   content: z.string().min(1).max(100_000).optional(),
   coverUrl: z.string().max(1000).nullable().optional(),
@@ -68,6 +89,8 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     return NextResponse.json({ error: parsed.error.issues[0]?.message || "bad params" }, { status: 400 });
   }
   const d: any = { ...parsed.data };
+  // 空字符串视为清空原作品链接
+  if ("sourceUrl" in d) d.sourceUrl = (d.sourceUrl || "").trim() || null;
   if (d.category) {
     const slugs = await getCategorySlugs();
     if (!slugs.includes(d.category)) d.category = existing.category;

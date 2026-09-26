@@ -26,6 +26,7 @@ export default function PublishPage() {
     type: "text",
     category: "",
     model: "",
+    sourceUrl: "",
     tags: "",
     description: "",
     content: "",
@@ -182,6 +183,17 @@ export default function PublishPage() {
       <label className={labelCls}>{t(locale, "publish.field.model")}</label>
       <input value={form.model} onChange={set("model")} maxLength={60} className={inputCls} />
 
+      <label className={labelCls}>{t(locale, "publish.field.sourceUrl")}</label>
+      <input
+        value={form.sourceUrl}
+        onChange={set("sourceUrl")}
+        type="url"
+        inputMode="url"
+        placeholder="https://…"
+        maxLength={500}
+        className={inputCls}
+      />
+
       <label className={labelCls}>{t(locale, "publish.cover")}</label>
       <div className="mb-4">
         <CoverUploader value={coverUrl} onChange={setCoverUrl} maxImageMB={cfg?.maxImageMB ?? 10} />
@@ -189,7 +201,12 @@ export default function PublishPage() {
 
       <label className={labelCls}>{t(locale, "publish.field.content")}</label>
       <div className="mb-4">
-        <RichEditor value={form.content} onChange={onContentChange} />
+        <RichEditor
+          value={form.content}
+          onChange={onContentChange}
+          maxImageMB={cfg?.maxImageMB ?? 10}
+          maxVideoMB={cfg?.maxVideoMB ?? 100}
+        />
       </div>
 
       <div className="mb-1 flex items-center gap-2">

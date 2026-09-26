@@ -52,11 +52,6 @@ export default async function ProfilePage() {
               <h2 className="truncate text-lg font-semibold text-zinc-100">
                 {u.nickname || u.username}
               </h2>
-              {u.role === "admin" && (
-                <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[11px] text-amber-300">
-                  ADMIN
-                </span>
-              )}
             </div>
             <p className="text-sm text-zinc-500">@{u.username}</p>
           </div>

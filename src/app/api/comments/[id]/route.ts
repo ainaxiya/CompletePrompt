@@ -5,9 +5,9 @@ import { PERMISSIONS, requirePerm, logAdminAction, getClientIp } from "@/lib/rba
 
 export const dynamic = "force-dynamic";
 
-// DELETE /api/comments/:id  评论主人或管理员可删
+// DELETE /api/comments/:id  评论主人或管理员可删（软删除）
 export async function DELETE(
-  req: NextRequest,
+  _req: NextRequest,
   ctx: { params: Promise<{ id: string }> }
 ) {
   const { id } = await ctx.params;
@@ -23,29 +23,28 @@ export async function DELETE(
   const { user: admin, ok } = await requirePerm(PERMISSIONS.COMMENT_MODERATE);
 
   if (!ok) {
-    // 非管理员则必须是评论主人
     const user = await getCurrentUser();
     if (!user || user.id !== comment.userId) {
       return NextResponse.json({ error: "forbidden" }, { status: 403 });
     }
   }
 
-  // 软删除：标记为 deleted，同时递减 prompt.commentCount
-  await db.$transaction(async (tx) => {
-    await tx.comment.update({
-      where: { id: cid },
-      data: { status: "deleted" },
+  if (comment.status !== "deleted") {
+    await db.$transaction(async (tx) => {
+      await tx.comment.update({ where: { id: cid }, data: { status: "deleted" } });
+      // 仅此前公开可见的评论扣减计数
+      if (comment.status === "published") {
+        await tx.prompt.update({
+          where: { id: comment.promptId },
+          data: { commentCount: { decrement: 1 } },
+        });
+      }
     });
-    await tx.prompt.update({
-      where: { id: comment.promptId },
-      data: { commentCount: { decrement: 1 } },
-    });
-  });
+  }
 
-  // 管理员操作记日志
   if (ok && admin) {
     await logAdminAction({
-      userId: admin.id,
+      adminId: admin.id,
       action: "delete",
       targetType: "comment",
       targetId: cid,
@@ -57,7 +56,7 @@ export async function DELETE(
   return NextResponse.json({ ok: true });
 }
 
-// PATCH /api/comments/:id  管理员审核隐藏/恢复
+// PATCH /api/comments/:id  管理员隐藏/恢复（published <-> hidden）
 export async function PATCH(
   req: NextRequest,
   ctx: { params: Promise<{ id: string }> }
@@ -79,14 +78,21 @@ export async function PATCH(
   if (!["published", "hidden"].includes(status)) {
     return NextResponse.json({ error: "status must be published or hidden" }, { status: 400 });
   }
+  // 已删除不可逆
+  if (comment.status === "deleted" || status === comment.status) {
+    return NextResponse.json({ error: "illegal transition" }, { status: 400 });
+  }
 
-  const updated = await db.comment.update({
-    where: { id: cid },
-    data: { status },
+  await db.$transaction(async (tx) => {
+    await tx.comment.update({ where: { id: cid }, data: { status } });
+    await tx.prompt.update({
+      where: { id: comment.promptId },
+      data: { commentCount: { [status === "published" ? "increment" : "decrement"]: 1 } },
+    });
   });
 
   await logAdminAction({
-    userId: user.id,
+    adminId: user.id,
     action: "update",
     targetType: "comment",
     targetId: cid,
@@ -94,5 +100,5 @@ export async function PATCH(
     ip: await getClientIp(),
   });
 
-  return NextResponse.json(updated);
+  return NextResponse.json({ ok: true });
 }

@@ -9,11 +9,23 @@ export const DEFAULT_SETTINGS = {
     siteDescription: "",
     searchKeywords: "",
     footerText: "",
-    // null = 未在「网站设置」里显式配置，回退 basic.allowRegister
+    // null = 未在「网站设置」里显式配置，回退 register/basic
     allowRegister: null as boolean | null,
     logoIcon: "",
     favicon: "",
     appIcon: "",
+    // 新内容自动提交 MeiliSearch 的间隔（秒）；0 = 永不自动更新
+    meiliSyncSeconds: 30,
+  },
+  // 注册设置（后台「注册设置」页）
+  register: {
+    allowRegister: true,
+    // 账号/密码固定必填；以下三个扩展字段：off=不收集，optional=可选，required=必填
+    fields: {
+      email: "off" as "off" | "optional" | "required",
+      nickname: "optional" as "off" | "optional" | "required",
+      phone: "off" as "off" | "optional" | "required",
+    },
   },
   basic: {
     siteName: "完整提示词",
@@ -36,6 +48,13 @@ export const DEFAULT_SETTINGS = {
     maxImageMB: 10,
     maxVideoMB: 100,
     maxMediaPerPrompt: 9,
+  },
+  // 评论设置（后台「评论管理 → 敏感词库」与全站开关）
+  comment: {
+    // 全站评论总开关：false 时所有提示词评论区只读
+    enabled: true,
+    // 敏感词库：命中词整体替换为等长 * 后直发
+    sensitiveWords: [] as string[],
   },
   membership: {
     tiers: [
@@ -71,7 +90,7 @@ export async function getSettings(): Promise<SiteSettings> {
   const rows = await db.siteSetting.findMany();
   const map = Object.fromEntries(rows.map((r) => [r.key, r.value]));
   const merged = structuredClone(DEFAULT_SETTINGS) as any;
-  for (const key of ["site", "basic", "publish", "membership"]) {
+  for (const key of ["site", "basic", "publish", "membership", "register", "comment"]) {
     if (map[key]) {
       try {
         merged[key] = { ...merged[key], ...JSON.parse(map[key]) };
@@ -82,7 +101,10 @@ export async function getSettings(): Promise<SiteSettings> {
   return merged;
 }
 
-export async function saveSetting(key: "site" | "basic" | "publish" | "membership", value: unknown) {
+export async function saveSetting(
+  key: "site" | "basic" | "publish" | "membership" | "register" | "comment",
+  value: unknown
+) {
   const json = JSON.stringify(value);
   await db.siteSetting.upsert({
     where: { key },
@@ -107,6 +129,7 @@ const DEFAULT_KEYWORDS = [
 export async function getPublicSite() {
   const s = await getSettings();
   const site = s.site;
+  const reg = s.register;
   const pick = (v: string | undefined | null, fallback: string) =>
     v && v.trim() ? v.trim() : fallback;
 
@@ -134,7 +157,10 @@ export async function getPublicSite() {
     description: pick(site.siteDescription, s.basic.siteDescription),
     footerText: pick(site.footerText, s.basic.footerText),
     keywords: keywords.length ? keywords : DEFAULT_KEYWORDS,
-    allowRegister: site.allowRegister ?? s.basic.allowRegister,
+    // 注册开关优先级：注册设置页 > 网站设置页 > 内置默认
+    allowRegister: reg.allowRegister ?? site.allowRegister ?? s.basic.allowRegister,
+    // 注册扩展字段配置（off/optional/required），前台注册页据此渲染
+    registerFields: reg.fields,
     // 图标：后台上传后走 /site-assets/ 动态服务；未配置则回退内置品牌资源
     logoIcon,
     favicon: site.favicon || "/favicon.ico",

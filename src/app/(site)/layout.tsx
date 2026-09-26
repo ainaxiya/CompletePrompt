@@ -1,6 +1,7 @@
 import Link from "next/link";
 import Script from "next/script";
 import SiteHeader from "@/components/SiteHeader";
+import MobileTabBar from "@/components/MobileTabBar";
 import { getPublicSite } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
@@ -11,9 +12,10 @@ export default async function SiteLayout({ children }: { children: React.ReactNo
   return (
     <div className="flex min-h-screen flex-col">
       <SiteHeader siteName={site.siteName} logoIcon={site.logoIcon || undefined} />
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">{children}</main>
+      {/* pb-24：为手机端底部 Tab 栏（52px + 安全区）预留空间，md 起 Tab 隐藏恢复常规 */}
+      <main className="mx-auto w-full max-w-6xl flex-1 px-4 pb-24 pt-8 md:pb-8">{children}</main>
 
-      <footer className="site-footer mt-8 border-t border-zinc-800/80 bg-zinc-950">
+      <footer className="site-footer mt-8 border-t border-zinc-800/80 bg-zinc-950 pb-16 md:pb-0">
         <div className="mx-auto w-full max-w-6xl px-4">
           {/* 上部：品牌 + 导航 */}
           <div className="flex flex-col gap-8 py-10 md:flex-row md:items-start md:justify-between">
@@ -86,6 +88,9 @@ export default async function SiteLayout({ children }: { children: React.ReactNo
   s.parentNode.insertBefore(mtj, s);
 })();`}
       </Script>
+
+      {/* 手机端底部标签栏（md 起自动隐藏） */}
+      <MobileTabBar />
     </div>
   );
 }

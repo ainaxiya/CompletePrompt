@@ -14,14 +14,26 @@ export async function POST(req: NextRequest) {
   if (!username || !password) {
     return NextResponse.json({ error: "请输入用户名和密码" }, { status: 400 });
   }
-  // 长度上限：防止超长输入拖垮 bcrypt（bcrypt 只取前 72 字节）
   if (username.length > 64 || password.length > 128) {
     return NextResponse.json({ error: "用户名或密码错误" }, { status: 401 });
   }
-  const user = await db.user.findUnique({ where: { username } });
+  // 会员登录只认 role=user（管理员有独立登录入口，采集账号禁止登录）
+  const user = await db.user.findFirst({
+    where: { username, role: "user" },
+  });
   if (!user?.passwordHash || !(await bcrypt.compare(password, user.passwordHash))) {
     return NextResponse.json({ error: "用户名或密码错误" }, { status: 401 });
   }
+  if (user.status !== "active") {
+    return NextResponse.json({ error: "账号已被禁止登录，请联系管理员" }, { status: 403 });
+  }
+
+  const ip = clientIp(req);
+  await db.user.update({
+    where: { id: user.id },
+    data: { lastLoginAt: new Date(), lastLoginIp: ip },
+  });
+
   await setAuthCookie(await signToken(user.id));
   return NextResponse.json({ id: user.id, username: user.username });
 }

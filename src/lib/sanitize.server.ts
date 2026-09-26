@@ -12,7 +12,7 @@ export function sanitizeRich(input: string): string {
     allowedTags: [
       "p", "br", "b", "strong", "i", "em", "u", "s", "h1", "h2", "h3",
       "ul", "ol", "li", "blockquote", "a", "img", "video", "source",
-      "iframe", "div", "span",
+      "iframe", "div", "span", "pre", "code",
     ],
     allowedAttributes: {
       a: ["href", "target", "rel"],
@@ -23,6 +23,8 @@ export function sanitizeRich(input: string): string {
       span: ["class"],
       div: ["class"],
       p: ["class"],
+      pre: ["class", "data-language"],
+      code: ["class"],
     },
     allowedSchemes: ["http", "https", "data"],
     allowedSchemesByTag: { img: ["http", "https", "data"] },

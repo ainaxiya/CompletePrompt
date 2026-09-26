@@ -216,7 +216,7 @@ export default function RoleManager({ initial }: Props) {
 
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <div className="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-zinc-700 bg-zinc-900 p-6">
+          <div className="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-zinc-700 bg-zinc-900 p-4 sm:p-6">
             <h2 className="mb-4 text-lg font-bold text-zinc-100">
               {editing ? "编辑角色" : "新建角色"}
             </h2>

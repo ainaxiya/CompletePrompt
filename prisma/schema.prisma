@@ -7,29 +7,62 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// 前台会员（注册用户）
 model User {
   id              Int        @id @default(autoincrement())
   username        String     @unique
   email           String?    @unique
+  phone           String?    @unique
   passwordHash    String?
   nickname        String?
   avatar          String?
   bio             String?
-  // user | admin | importer
+  // user = 前台会员；importer = 采集系统账号；admin_legacy = 已迁移到 AdminAccount 的历史管理员
   role            String     @default("user")
-  // 后台管理角色（仅 role=admin 时有效）
+  // 历史遗留：旧版管理员角色外键（新管理员体系见 AdminAccount），保留不用于鉴权
   adminRoleId     Int?
-  adminRole       AdminRole? @relation(fields: [adminRoleId], references: [id])
-  // free / pro / vip ...
+  adminRole       AdminRole? @relation("AdminRoleUsers", fields: [adminRoleId], references: [id])
+  // 会员级别列保留（当前只有普通会员，界面不再展示）
   membershipLevel String     @default("free")
   membershipUntil DateTime?
+  // active | banned
   status          String     @default("active")
+  // 是否允许发布提示词（注册默认允许，后台可单独封禁发布权限）
+  allowPublish    Boolean    @default(true)
+  // 评论禁言（独立于 status=banned 的登录封禁；true=不能发评论但可正常浏览登录）
+  commentBanned   Boolean    @default(false)
+  registerIp      String?
+  lastLoginAt     DateTime?
+  lastLoginIp     String?
   createdAt       DateTime   @default(now())
   prompts         Prompt[]
   likes           Like[]
   favorites       Favorite[]
   comments        Comment[]
+  commentLikes    CommentLike[]
   adminLogs       AdminLog[]
+}
+
+// 后台管理员（与会员体系完全独立）
+model AdminAccount {
+  id           Int        @id @default(autoincrement())
+  username     String     @unique
+  nickname     String?
+  passwordHash String
+  // active | disabled
+  status       String     @default("active")
+  // true = 超级管理员（全部权限）；false = 按 adminRole 权限表
+  isSuper      Boolean    @default(false)
+  adminRoleId  Int?
+  adminRole    AdminRole? @relation("AdminRoleAdmins", fields: [adminRoleId], references: [id])
+  createdIp    String?
+  lastLoginAt  DateTime?
+  lastLoginIp  String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  prompts   Prompt[]
+  adminLogs AdminLog[]
 }
 
 // 提示词分类
@@ -68,6 +101,8 @@ model Prompt {
   favoriteCount Int      @default(0)
   viewCount     Int      @default(0)
   commentCount  Int      @default(0)
+  // 单篇关闭评论：旧评论保留显示，禁止新发
+  commentsClosed Boolean @default(false)
   // draft | pending | published | rejected
   status        String   @default("published")
   rejectReason  String?
@@ -75,6 +110,9 @@ model Prompt {
   updatedAt     DateTime @updatedAt
   // 发布时间：首次上线时间，与 updatedAt 独立
   publishedAt   DateTime?
+  // 后台管理员发布时的作者（前台会员发布走 userId）
+  adminAuthorId Int?
+  adminAuthor   AdminAccount? @relation(fields: [adminAuthorId], references: [id])
 
   user      User       @relation(fields: [userId], references: [id])
   likes     Like[]
@@ -88,6 +126,7 @@ model Prompt {
   @@index([featured])
   @@index([hot])
   @@index([sourceUrl])
+  @@index([adminAuthorId])
 }
 
 model Like {
@@ -136,22 +175,26 @@ model TranslationCache {
 model AdminRole {
   id          Int      @id @default(autoincrement())
   name        String   @unique
-  // 权限列表：["prompt:read","prompt:write","prompt:delete","user:manage","role:manage","setting:write","log:read", ...] 或 ["*"] 表示全部权限
+  // 权限列表：["prompt:read",...] 或 ["*"] 表示全部权限
   permissions String[] @default([])
   description String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  users       User[]
+  users       User[]   @relation("AdminRoleUsers")
+  admins      AdminAccount[] @relation("AdminRoleAdmins")
 }
 
-// 管理员操作日志（只增不删不改）
+// 管理员操作日志（只增不删不改）。新日志写 adminId；userId 为历史数据保留
 model AdminLog {
   id         Int      @id @default(autoincrement())
-  userId     Int
-  user       User     @relation(fields: [userId], references: [id])
+  adminId    Int?
+  admin      AdminAccount? @relation(fields: [adminId], references: [id])
+  // 历史日志挂 User；新日志挂 adminId
+  userId     Int?
+  user       User?    @relation(fields: [userId], references: [id])
   // 操作类型：create | update | delete | batch_update | login | logout
   action     String
-  // 操作对象类型：prompt | user | category | role | setting | comment
+  // 操作对象类型：prompt | user | admin | category | role | setting | comment
   targetType String?
   targetId   Int?
   // 详细变更内容（JSON 字符串）
@@ -159,6 +202,7 @@ model AdminLog {
   ip         String?
   createdAt  DateTime @default(now())
 
+  @@index([adminId, createdAt(sort: Desc)])
   @@index([userId, createdAt(sort: Desc)])
   @@index([targetType, createdAt(sort: Desc)])
 }
@@ -178,13 +222,31 @@ model Comment {
   // published | hidden | deleted
   status    String   @default("published")
   likeCount Int      @default(0)
+  // 审核取证（发布时 IP/UA，仅后台可见）
+  ip        String?
+  ua        String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   user   User   @relation(fields: [userId], references: [id])
   prompt Prompt @relation(fields: [promptId], references: [id])
+  likes  CommentLike[]
 
   @@index([promptId, createdAt(sort: Desc)])
   @@index([userId])
   @@index([parentId])
+}
+
+// 评论点赞（防重复）
+model CommentLike {
+  id        Int      @id @default(autoincrement())
+  commentId Int
+  userId    Int
+  createdAt DateTime @default(now())
+
+  comment Comment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id])
+
+  @@unique([commentId, userId])
+  @@index([userId])
 }

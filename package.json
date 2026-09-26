@@ -10,12 +10,22 @@
     "db:up": "node scripts/db-manual.mjs",
     "db:push": "prisma db push",
     "parse": "python scripts/parse_lib.py",
-    "seed": "node scripts/seed.mjs"
+    "seed": "node scripts/seed.mjs",
+    "meili:sync": "node scripts/meili-sync-daemon.mjs",
+    "migrate:admins": "node scripts/migrate-admins.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.16.0",
+    "@tiptap/core": "^3.31.3",
+    "@tiptap/extension-image": "^3.31.3",
+    "@tiptap/extension-link": "^3.31.3",
+    "@tiptap/extension-placeholder": "^3.31.3",
+    "@tiptap/extension-underline": "^3.31.3",
+    "@tiptap/react": "^3.31.3",
+    "@tiptap/starter-kit": "^3.31.3",
     "@types/sanitize-html": "^2.16.1",
     "bcryptjs": "^3.0.2",
+    "dotenv": "^16.6.1",
     "jose": "^6.0.0",
     "meilisearch": "^0.50.0",
     "next": "^15.5.0",

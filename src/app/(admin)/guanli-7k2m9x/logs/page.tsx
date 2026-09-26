@@ -1,4 +1,3 @@
-import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
 import { redirect } from "next/navigation";
@@ -22,6 +21,7 @@ const ACTION_LABELS: Record<string, string> = {
 const TARGET_LABELS: Record<string, string> = {
   prompt: "提示词",
   user: "用户",
+  admin: "管理员",
   category: "分类",
   role: "角色",
   setting: "设置",
@@ -31,19 +31,26 @@ const TARGET_LABELS: Record<string, string> = {
 export default async function AdminLogsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string; userId?: string; action?: string; targetType?: string }>;
+  searchParams: Promise<{ page?: string; q?: string; action?: string; targetType?: string }>;
 }) {
   const admin = await requireAdmin();
-  if (!admin) redirect(`/login?next=${encodeURIComponent(ADMIN_BASE)}`);
+  if (!admin) redirect(`${ADMIN_BASE}/login`);
 
   const sp = await searchParams;
   const page = Math.max(1, parseInt(sp.page || "1") || 1);
-  const userId = sp.userId ? parseInt(sp.userId) || 0 : 0;
+  const q = (sp.q || "").trim();
   const action = sp.action || "";
   const targetType = sp.targetType || "";
 
-  const where: Prisma.AdminLogWhereInput = {};
-  if (userId) where.userId = userId;
+  type LogWhere = NonNullable<Parameters<typeof db.adminLog.findMany>[0]>["where"];
+  const where: LogWhere = {};
+  // 按管理员账号名模糊查询（历史日志可能挂 userId，一并兼容）
+  if (q) {
+    where.OR = [
+      { admin: { username: { contains: q, mode: "insensitive" } } },
+      { user: { username: { contains: q, mode: "insensitive" } } },
+    ];
+  }
   if (action) where.action = action;
   if (targetType) where.targetType = targetType;
 
@@ -53,18 +60,21 @@ export default async function AdminLogsPage({
       orderBy: { id: "desc" },
       skip: (page - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
-      include: { user: { select: { id: true, username: true, nickname: true } } },
+      include: {
+        admin: { select: { id: true, username: true, nickname: true } },
+        user: { select: { id: true, username: true, nickname: true } },
+      },
     }),
     db.adminLog.count({ where }),
   ]);
 
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
-  const buildUrl = (p: Partial<{ page: string; userId: string; action: string; targetType: string }>) => {
+  const buildUrl = (p: Partial<{ page: string; q: string; action: string; targetType: string }>) => {
     const params = new URLSearchParams();
-    const merged = { page: String(page), userId: userId ? String(userId) : "", action, targetType, ...p };
+    const merged = { page: String(page), q, action, targetType, ...p };
     if (merged.page && merged.page !== "1") params.set("page", merged.page);
-    if (merged.userId) params.set("userId", merged.userId);
+    if (merged.q) params.set("q", merged.q);
     if (merged.action) params.set("action", merged.action);
     if (merged.targetType) params.set("targetType", merged.targetType);
     const qs = params.toString();
@@ -105,19 +115,19 @@ export default async function AdminLogsPage({
           ))}
         </select>
         <input
-          name="userId"
-          type="number"
-          defaultValue={userId || ""}
-          placeholder="用户 ID"
-          className="w-28 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-sm outline-none"
+          name="q"
+          type="text"
+          defaultValue={q}
+          placeholder="管理员账号"
+          className="w-36 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-sm outline-none focus:border-indigo-500"
         />
         <button
           type="submit"
-          className="rounded-lg bg-zinc-800 px-4 py-1.5 text-sm hover:bg-zinc-700"
+          className="rounded-lg bg-indigo-600 px-5 py-1.5 text-sm font-medium text-white hover:bg-indigo-500"
         >
-          筛选
+          查询
         </button>
-        {(action || targetType || userId) && (
+        {(action || targetType || q) && (
           <Link
             href={`${ADMIN_BASE}/logs`}
             className="rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-400 hover:bg-zinc-800"
@@ -149,46 +159,59 @@ export default async function AdminLogsPage({
                 </td>
               </tr>
             )}
-            {logs.map((log) => (
-              <tr key={log.id} className="align-top hover:bg-zinc-800/30">
-                <td className="px-3 py-2.5 text-xs text-zinc-500">
-                  {log.createdAt.toLocaleString("zh-CN", { hour12: false })}
-                </td>
-                <td className="px-3 py-2.5 text-zinc-300">
-                  {log.user ? (
-                    <span>
-                      {log.user.nickname || log.user.username}
-                      <span className="ml-1 text-xs text-zinc-500">#{log.user.id}</span>
+            {logs.map((log) => {
+              // 新日志挂 admin，迁移前历史日志挂 user
+              const actor = log.admin || log.user;
+              return (
+                <tr key={log.id} className="align-top hover:bg-zinc-800/30">
+                  <td className="px-3 py-2.5 text-xs text-zinc-500">
+                    {log.createdAt.toLocaleString("zh-CN", { hour12: false })}
+                  </td>
+                  <td className="px-3 py-2.5 text-zinc-300">
+                    {actor ? (
+                      <span>
+                        {actor.nickname || actor.username}
+                        <span className="ml-1 text-xs text-zinc-500">#{actor.id}</span>
+                        {log.admin ? (
+                          <span className="ml-1.5 rounded bg-indigo-500/15 px-1 py-0.5 text-[10px] text-indigo-300">
+                            管理员
+                          </span>
+                        ) : (
+                          <span className="ml-1.5 rounded bg-zinc-700/50 px-1 py-0.5 text-[10px] text-zinc-400">
+                            历史
+                          </span>
+                        )}
+                      </span>
+                    ) : (
+                      <span className="text-zinc-600">已删除</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-xs text-zinc-300">
+                      {ACTION_LABELS[log.action] || log.action}
                     </span>
-                  ) : (
-                    <span className="text-zinc-600">已删除</span>
-                  )}
-                </td>
-                <td className="px-3 py-2.5">
-                  <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-xs text-zinc-300">
-                    {ACTION_LABELS[log.action] || log.action}
-                  </span>
-                </td>
-                <td className="px-3 py-2.5 text-xs text-zinc-400">
-                  {log.targetType ? TARGET_LABELS[log.targetType] || log.targetType : "—"}
-                </td>
-                <td className="px-3 py-2.5 text-xs text-zinc-500">
-                  {log.targetId || "—"}
-                </td>
-                <td className="px-3 py-2.5">
-                  {log.detail ? (
-                    <pre className="max-w-md overflow-x-auto whitespace-pre-wrap break-all text-xs text-zinc-500">
-                      {log.detail.length > 300
-                        ? log.detail.slice(0, 300) + "…"
-                        : log.detail}
-                    </pre>
-                  ) : (
-                    <span className="text-zinc-600">—</span>
-                  )}
-                </td>
-                <td className="px-3 py-2.5 text-xs text-zinc-500">{log.ip || "—"}</td>
-              </tr>
-            ))}
+                  </td>
+                  <td className="px-3 py-2.5 text-xs text-zinc-400">
+                    {log.targetType ? TARGET_LABELS[log.targetType] || log.targetType : "—"}
+                  </td>
+                  <td className="px-3 py-2.5 text-xs text-zinc-500">
+                    {log.targetId || "—"}
+                  </td>
+                  <td className="px-3 py-2.5">
+                    {log.detail ? (
+                      <pre className="max-w-md overflow-x-auto whitespace-pre-wrap break-all text-xs text-zinc-500">
+                        {log.detail.length > 300
+                          ? log.detail.slice(0, 300) + "…"
+                          : log.detail}
+                      </pre>
+                    ) : (
+                      <span className="text-zinc-600">—</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2.5 text-xs text-zinc-500">{log.ip || "—"}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

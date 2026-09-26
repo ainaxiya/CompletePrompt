@@ -16,7 +16,8 @@ export async function PUT(req: NextRequest) {
 
   const body = await req.json().catch(() => null);
   const section = body?.section;
-  if (!["basic", "publish", "membership"].includes(section)) {
+  // basic/membership 设置页已下线（基本设置并入网站设置，会员设置改为注册设置）
+  if (!["publish", "register"].includes(section)) {
     return NextResponse.json({ error: "bad section" }, { status: 400 });
   }
   await saveSetting(section, body.value);

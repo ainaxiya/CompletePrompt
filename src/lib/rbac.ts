@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { getCurrentUser } from "./auth";
+import { getCurrentAdmin } from "./auth";
 import { headers } from "next/headers";
 import { PERMISSIONS, ALL_PERMISSIONS, PERMISSION_GROUPS } from "./permissions";
 
@@ -9,35 +9,36 @@ export { PERMISSIONS, ALL_PERMISSIONS, PERMISSION_GROUPS };
 
 export type Permission = string;
 
-// ─── 权限检查 ───
-export async function getUserPermissions(userId: number): Promise<Set<string>> {
-  const user = await db.user.findUnique({
-    where: { id: userId },
-    select: { role: true, adminRoleId: true, adminRole: { select: { permissions: true } } },
+// ─── 权限检查（管理员独立体系） ───
+export async function getAdminPermissions(adminId: number): Promise<Set<string>> {
+  const admin = await db.adminAccount.findUnique({
+    where: { id: adminId },
+    select: { isSuper: true, status: true, adminRole: { select: { permissions: true } } },
   });
-  if (!user || user.role !== "admin") return new Set();
-
-  // 没有分配角色 = 超级管理员（全部权限）
-  if (!user.adminRoleId || !user.adminRole) return new Set(ALL_PERMISSIONS);
-  return new Set(user.adminRole.permissions);
+  if (!admin || admin.status !== "active") return new Set();
+  if (admin.isSuper || !admin.adminRole) return new Set(ALL_PERMISSIONS);
+  return new Set(admin.adminRole.permissions);
 }
 
-export async function hasPermission(userId: number, perm: Permission): Promise<boolean> {
-  const perms = await getUserPermissions(userId);
+export async function adminHasPermission(adminId: number, perm: Permission): Promise<boolean> {
+  const perms = await getAdminPermissions(adminId);
   return perms.has("*") || perms.has(perm);
 }
 
 // ─── 在 API 路由中校验权限 ───
+// 返回的 admin 是 AdminAccount（含 isSuper/adminRole）
 export async function requirePerm(perm: Permission) {
-  const user = await getCurrentUser();
-  if (!user || user.role !== "admin" || user.status !== "active") return { user: null, ok: false } as const;
-  const ok = await hasPermission(user.id, perm);
-  return { user, ok } as const;
+  const admin = await getCurrentAdmin();
+  if (!admin) return { admin: null, user: null, ok: false } as const;
+  if (admin.isSuper) return { admin, user: admin, ok: true } as const;
+  const perms = new Set(admin.adminRole?.permissions || []);
+  const ok = perms.has("*") || perms.has(perm);
+  return { admin, user: admin, ok } as const;
 }
 
-// ─── 操作日志（只增不删） ───
+// ─── 操作日志（只增不删，新日志一律挂 adminId） ───
 export async function logAdminAction(params: {
-  userId: number;
+  adminId: number;
   action: string;
   targetType?: string;
   targetId?: number;
@@ -47,7 +48,7 @@ export async function logAdminAction(params: {
   try {
     await db.adminLog.create({
       data: {
-        userId: params.userId,
+        adminId: params.adminId,
         action: params.action,
         targetType: params.targetType ?? null,
         targetId: params.targetId ?? null,
@@ -95,13 +96,4 @@ export async function ensureDefaultRoles() {
       },
     ],
   });
-
-  // 将现有的 admin 用户分配为超级管理员
-  const admins = await db.user.findMany({ where: { role: "admin" } });
-  for (const a of admins) {
-    const superRole = await db.adminRole.findFirst({ where: { name: "超级管理员" } });
-    if (superRole) {
-      await db.user.update({ where: { id: a.id }, data: { adminRoleId: superRole.id } });
-    }
-  }
 }

@@ -145,6 +145,41 @@ body {
 }
 .rich-content pre code { background: transparent; padding: 0; }
 
+/* TipTap（ProseMirror）编辑器 */
+.tiptap-prose { min-height: 200px; }
+.tiptap-prose:focus { outline: none; }
+.tiptap-prose .ProseMirror { outline: none; min-height: 200px; }
+.tiptap-prose p.is-editor-empty:first-child::before,
+.tiptap-prose .is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  color: #52525b;
+}
+.tiptap-prose .ProseMirror-selectednode {
+  outline: 2px solid rgba(99, 102, 241, 0.6);
+  border-radius: 0.5rem;
+}
+/* 代码块语言标记（StarterKit 会在 pre 上加 data-language） */
+.rich-content pre[data-language]::before {
+  content: attr(data-language);
+  display: block;
+  margin-bottom: 0.4em;
+  font-size: 0.72em;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #71717a;
+}
+
+/* 点赞数变化时的弹跳 */
+@keyframes btn-pop {
+  0% { transform: scale(0.7); }
+  55% { transform: scale(1.25); }
+  100% { transform: scale(1); }
+}
+.btn-pop { animation: btn-pop 0.28s ease-out; }
+
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-thumb { @apply bg-zinc-700 rounded-full; }
 ::-webkit-scrollbar-track { background: transparent; }

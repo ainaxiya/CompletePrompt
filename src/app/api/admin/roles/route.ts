@@ -16,7 +16,7 @@ export async function GET() {
 
   const roles = await db.adminRole.findMany({
     orderBy: { id: "asc" },
-    include: { _count: { select: { users: true } } },
+    include: { _count: { select: { users: true, admins: true } } },
   });
 
   return NextResponse.json(
@@ -28,6 +28,7 @@ export async function GET() {
       createdAt: r.createdAt,
       updatedAt: r.updatedAt,
       userCount: r._count.users,
+      adminCount: r._count.admins,
     })),
   );
 }
@@ -69,7 +70,7 @@ export async function POST(req: NextRequest) {
   });
 
   await logAdminAction({
-    userId: admin.id,
+    adminId: admin.id,
     action: "create",
     targetType: "role",
     targetId: role.id,

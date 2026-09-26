@@ -29,7 +29,7 @@ export default async function Home() {
 
   return (
     <div>
-      <div className="relative mb-8 overflow-hidden rounded-2xl border border-emerald-700/40 bg-zinc-900/70 px-6 py-10 text-center">
+      <div className="relative mb-8 overflow-hidden rounded-2xl border border-emerald-700/40 bg-zinc-900/70 px-5 py-8 text-center sm:px-6 sm:py-10">
         <div className="pointer-events-none absolute -top-24 left-1/2 h-56 w-[36rem] -translate-x-1/2 rounded-full bg-emerald-500/15 blur-3xl" />
         <div className="pointer-events-none absolute -top-20 right-1/4 h-40 w-72 rounded-full bg-royal-500/10 blur-3xl" />
         <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-emerald-500/70 to-royal-400/50 to-transparent" />

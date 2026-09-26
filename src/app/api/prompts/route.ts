@@ -34,6 +34,17 @@ const mediaSchema = z.object({
   poster: mediaUrl.optional(),
 });
 
+// 原作品链接：与 mediaUrl 同规则，限长 500
+const sourceUrlRule = z.string().max(500).refine((v) => {
+  if (v.startsWith("/")) return true;
+  try {
+    const u = new URL(v);
+    return u.protocol === "http:" || u.protocol === "https:";
+  } catch {
+    return false;
+  }
+}, "Invalid url");
+
 const createSchema = z.object({
   title: z.string().min(2).max(200),
   type: z.enum(VALID_TYPES).default("text"),
@@ -43,6 +54,8 @@ const createSchema = z.object({
   description: z.string().max(2000).optional(),
   content: z.string().min(1).max(100_000),
   coverUrl: z.string().max(1000).optional().nullable(),
+  // 原作品/转载出处链接
+  sourceUrl: sourceUrlRule.nullable().optional().or(z.literal("")),
   media: z.array(mediaSchema).max(12).optional().default([]),
 });
 
@@ -73,6 +86,12 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "请先登录" }, { status: 401 });
+  if (user.status === "banned") {
+    return NextResponse.json({ error: "账号已被封禁，无法发布" }, { status: 403 });
+  }
+  if (!user.allowPublish) {
+    return NextResponse.json({ error: "发布权限已被关闭" }, { status: 403 });
+  }
 
   const settings = await getSettings();
   const body = await req.json().catch(() => null);
@@ -133,6 +152,7 @@ export async function POST(req: NextRequest) {
       tags,
       media: media as any,
       coverUrl,
+      sourceUrl: d.sourceUrl?.trim() || null,
       status,
     },
   });

@@ -12,6 +12,8 @@ export async function GET() {
       siteName: site.siteName,
       allowRegister: site.allowRegister,
     },
+    // 注册页动态字段配置（off/optional/required）
+    registerFields: site.registerFields,
     publish: s.publish,
     membership: s.membership,
   });

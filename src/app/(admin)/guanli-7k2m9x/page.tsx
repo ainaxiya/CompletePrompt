@@ -13,13 +13,16 @@ export default async function AdminHome() {
       db.prompt.count({ where: { status: "published" } }),
       db.prompt.count({ where: { status: "pending" } }),
       db.prompt.count({ where: { status: "rejected" } }),
-      db.user.count(),
+      db.user.count({ where: { role: "user" } }),
       db.prompt.count({ where: { createdAt: { gte: new Date(Date.now() - 86400_000) } } }),
       db.prompt.findMany({
         where: { status: "pending" },
         orderBy: { id: "desc" },
         take: 8,
-        include: { user: { select: { username: true } } },
+        include: {
+          user: { select: { username: true, nickname: true } },
+          adminAuthor: { select: { username: true, nickname: true } },
+        },
       }),
       db.prompt.count({ where: { NOT: [{ media: { equals: [] } }] } }),
     ]);
@@ -64,7 +67,11 @@ export default async function AdminHome() {
                 <Link href={`/p/${p.id}`} target="_blank" className="flex-1 truncate text-zinc-200 hover:text-emerald-300">
                   {p.title}
                 </Link>
-                <span className="text-xs text-zinc-500">{p.user.username}</span>
+                <span className={`text-xs ${p.adminAuthor ? "text-indigo-300" : "text-zinc-500"}`}>
+                  {p.adminAuthor
+                    ? `${p.adminAuthor.nickname || p.adminAuthor.username}（管理员）`
+                    : p.user.nickname || p.user.username}
+                </span>
                 <Link href={`${ADMIN_BASE}/prompts?status=pending`} className="text-xs text-amber-400 hover:underline">
                   去审核
                 </Link>

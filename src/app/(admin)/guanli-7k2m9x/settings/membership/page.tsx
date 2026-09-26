@@ -1,11 +1,11 @@
-import { MembershipForm } from "@/components/admin/SettingsForms";
+import { RegisterSettingsForm } from "@/components/admin/SettingsForms";
 export const dynamic = "force-dynamic";
-export const metadata = { title: "会员设置" };
+export const metadata = { title: "注册设置" };
 export default function Page() {
   return (
     <div>
-      <h1 className="mb-5 text-xl font-bold">会员设置</h1>
-      <MembershipForm />
+      <h1 className="mb-5 text-xl font-bold">注册设置</h1>
+      <RegisterSettingsForm />
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser, getCurrentAdmin } from "@/lib/auth";
 import { CopyButton, ActionButtons } from "@/components/Buttons";
 import PromptCard from "@/components/PromptCard";
 import AutoTranslate from "@/components/AutoTranslate";
@@ -12,18 +12,32 @@ import type { MediaItem } from "@/lib/media";
 import { isHtmlContent, stripHtml, safeJsonScript } from "@/lib/rich";
 import { sanitizeRich } from "@/lib/sanitize.server";
 import { getCategoryMeta } from "@/lib/category-meta";
+import { getSettings } from "@/lib/settings";
+import { COMMENT } from "@/lib/comment-policy";
 import CommentSection, { type CommentData } from "@/components/CommentSection";
+
+const COMMENT_PAGE_SIZE = COMMENT.PAGE_SIZE;
 
 export const dynamic = "force-dynamic";
 
 // 将 Prisma Comment（含 Date 字段）序列化为可传给 client 组件的 plain object
-function serializeComment(c: {
-  id: number; userId: number; promptId: number; content: string;
-  parentId: number | null; status: string; likeCount: number;
-  createdAt: Date; updatedAt: Date;
-  user: { id: number; username: string; nickname: string | null; avatar: string | null };
-  replies?: unknown[];
-}): CommentData {
+function serializeComment(c: any): CommentData {
+  // 有公开回复的已删顶级评论：渲染占位
+  if (c.status === "deleted") {
+    return {
+      id: c.id,
+      promptId: c.promptId,
+      parentId: null,
+      status: "deleted",
+      deleted: true,
+      content: "",
+      likeCount: 0,
+      liked: false,
+      createdAt: c.createdAt.toISOString(),
+      user: null,
+      replies: ((c.replies ?? []) as any[]).map(serializeComment),
+    };
+  }
   return {
     id: c.id,
     userId: c.userId,
@@ -32,6 +46,7 @@ function serializeComment(c: {
     parentId: c.parentId,
     status: c.status,
     likeCount: c.likeCount,
+    liked: Array.isArray(c.likes) ? c.likes.length > 0 : false,
     createdAt: c.createdAt.toISOString(),
     updatedAt: c.updatedAt.toISOString(),
     user: {
@@ -40,7 +55,7 @@ function serializeComment(c: {
       nickname: c.user.nickname,
       avatar: c.user.avatar,
     },
-    replies: ((c.replies ?? []) as Parameters<typeof serializeComment>[0][]).map(serializeComment),
+    replies: ((c.replies ?? []) as any[]).map(serializeComment),
   };
 }
 
@@ -74,20 +89,21 @@ export default async function PromptDetail({
   if (!pid) notFound();
   const locale = await getServerLocale();
 
-  const [p, user] = await Promise.all([
+  const [p, user, admin] = await Promise.all([
     db.prompt.findUnique({
       where: { id: pid },
       include: {
-        user: { select: { id: true, username: true, role: true, membershipLevel: true, membershipUntil: true } },
+        user: { select: { id: true, username: true, nickname: true } },
       },
     }),
     getCurrentUser(),
+    getCurrentAdmin(),
   ]);
   if (!p) notFound();
 
   // 未发布内容：仅作者本人或管理员可见
   const canSee =
-    p.status === "published" || user?.role === "admin" || (user && user.id === p.userId);
+    p.status === "published" || !!admin || (user && user.id === p.userId);
   if (!canSee) notFound();
 
   if (p.status === "published") {
@@ -142,20 +158,39 @@ export default async function PromptDetail({
     },
   });
 
-  // 顶级评论 + 一级回复（最多 2 级嵌套）
-  const rawComments = await db.comment.findMany({
-    where: { promptId: pid, parentId: null, status: "published" },
-    include: {
-      user: { select: { id: true, username: true, nickname: true, avatar: true } },
-      replies: {
-        include: { user: { select: { id: true, username: true, nickname: true, avatar: true } } },
-        where: { status: "published" },
-        orderBy: { createdAt: "asc" },
+  // 评论设置 + 首屏评论（顶级 20 条，含已赞状态；有公开回复的已删评论显示占位）
+  const settings = await getSettings();
+  const commentWhere = {
+    promptId: pid,
+    parentId: null,
+    OR: [
+      { status: "published" },
+      { status: "deleted", replies: { some: { status: "published" } } },
+    ],
+  };
+  const likedSelect = user ? { likes: { where: { userId: user.id }, select: { id: true } } } : {};
+  const [rawComments, commentTotal] = await Promise.all([
+    db.comment.findMany({
+      where: commentWhere,
+      include: {
+        user: { select: { id: true, username: true, nickname: true, avatar: true } },
+        ...likedSelect,
+        replies: {
+          include: {
+            user: { select: { id: true, username: true, nickname: true, avatar: true } },
+            ...likedSelect,
+          },
+          where: { status: "published" },
+          orderBy: { createdAt: "asc" },
+        },
       },
-    },
-    orderBy: { createdAt: "desc" },
-  });
+      orderBy: { createdAt: "desc" },
+      take: COMMENT_PAGE_SIZE,
+    }),
+    db.comment.count({ where: commentWhere }),
+  ]);
   const comments = rawComments.map(serializeComment);
+  const commentsClosed = !settings.comment.enabled || p.commentsClosed;
 
   const media = (Array.isArray(p.media) ? p.media : []) as unknown as MediaItem[];
   // 分段媒体：按 section 序号分组；其余（封面等）进顶部画廊
@@ -168,10 +203,6 @@ export default async function PromptDetail({
     }
   }
   const topMedia = media.filter((m) => typeof m.section !== "number");
-  const memberActive =
-    p.user.membershipLevel &&
-    p.user.membershipLevel !== "free" &&
-    (!p.user.membershipUntil || p.user.membershipUntil > new Date());
 
   const jsonLd = {
     "@context": "https://schema.org",
@@ -210,12 +241,7 @@ export default async function PromptDetail({
           </div>
           <h1 className="mb-3 text-2xl font-bold leading-tight">{p.title}</h1>
           <div className="flex flex-wrap items-center gap-3 text-sm text-zinc-400">
-            <span>{p.sourceAuthor || p.user.username}</span>
-            {memberActive && (
-              <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[11px] text-amber-300">
-                {String(p.user.membershipLevel).toUpperCase()}
-              </span>
-            )}
+            <span>{p.sourceAuthor || p.user.nickname || p.user.username}</span>
             <span>·</span>
             <span>{p.createdAt.toISOString().slice(0, 10)}</span>
             <span>·</span>
@@ -264,7 +290,7 @@ export default async function PromptDetail({
 
         <div className="space-y-3">
           {isRich ? (
-            <section className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-4">
+            <section className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3 sm:p-4">
               <div className="mb-2 flex items-center justify-end gap-2">
                 <CopyButton text={plainText} />
               </div>
@@ -279,7 +305,7 @@ export default async function PromptDetail({
               const chips = s.label ? s.label.split("｜").filter(Boolean) : [];
               const secImgs = sectionMedia.get(s.no);
               return (
-                <section key={i} className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-4">
+                <section key={i} className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3 sm:p-4">
                   <div className="mb-2.5 flex items-start justify-between gap-2">
                     <div className="flex flex-wrap items-center gap-1.5">
                       {s.no > 0 && (
@@ -327,7 +353,12 @@ export default async function PromptDetail({
     </div>
 
       <section className="mt-8">
-        <CommentSection promptId={pid} initialComments={comments} />
+        <CommentSection
+          promptId={pid}
+          initialComments={comments}
+          closed={commentsClosed}
+          initialTotal={commentTotal}
+        />
       </section>
     </>
   );

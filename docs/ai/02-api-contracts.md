@@ -42,11 +42,6 @@
 - 返回 `{ id, username, nickname, avatar, bio }`
 - 加新可编辑资料字段：这里 + ProfileForm + GET select 三处
 
-### POST /api/user/avatar/upload
-- 需登录；FormData `file`；限 5MB；仅图片（magic-byte：PNG/JPEG/GIF/WEBP）
-- 用 **sharp** 压 webp 存 `public/uploads/avatars/`，返回 `{ url }`
-- 注意：sharp 未在 package.json 显式声明（由 Next.js 附带提供），若独立脚本环境要用需自行安装
-
 ### GET /api/lang?next=<path>
 - 切换语言：读请求体/查询设置 `locale` cookie（zh/en），回跳 next（safeNextPath 校验，仅站内相对路径）
 
@@ -110,11 +105,18 @@
 - body `{ warm: true }` → 预热标签词库，返 `{ ok:true }`
 - body `{ content, title? }` → `{ tags: string[≤8], description }`（词库命中 + n-gram 词频）
 
-### POST /api/upload（用户媒体）
-- 需登录；限流 30 次/分钟/IP；受 publish.allowUpload 开关
+### POST /api/upload（用户媒体，单文件；批量上传也走它）
+- 需登录；限流 30 次/分钟/IP（批量并发时按文件计）；受 publish.allowUpload 开关
 - FormData `file`；图片限 publish.maxImageMB(10)、视频 maxVideoMB(100)
-- magic-byte 判型（jpg/png/webp/gif/mp4/webm），与声称大类必须一致
-- 随机文件名存 `public/uploads/YYYY/MM/`；返 `{ url, type: "image"|"video", size }`
+- 校验/落盘统一在 `src/lib/upload-core.server.ts`（sniffKind magic-byte、UploadError 带状态码、随机文件名存 `public/uploads/YYYY/MM/`），**新上传入口复用该模块，不要复制校验代码**
+- 返 `{ url, type: "image"|"video", size }`；任何异常都有 JSON 兜底
+- **批量上传约定：不设批量接口**——前端 UniversalUploader 多选后以 3 路并发逐文件调本接口（避免单请求体积超过 Nginx client_max_body_size，且单文件失败可单独重试）。新批量场景沿用此模式
+- 文件经 Nginx `/uploads/` alias 提供 HTTP 访问（见部署指南第 10 节）
+
+### POST /api/user/avatar/upload
+- 需登录；5MB；magic-byte 仅图片；sharp 裁切 256×256 webp 存 `public/uploads/avatars/`
+- 同步更新 user.avatar；返 `{ url, type:"image", size }`；整体 try/catch 返回 JSON
+- sharp 未在 package.json 显式声明（Next.js 附带），独立脚本环境需自行安装
 
 ---
 

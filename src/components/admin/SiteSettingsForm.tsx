@@ -8,10 +8,10 @@ type SiteData = {
   siteDescription: string;
   searchKeywords: string;
   footerText: string;
-  allowRegister: boolean;
   logoIcon: string;
   favicon: string;
   appIcon: string;
+  meiliSyncSeconds: number;
 };
 
 type Props = { initial: SiteData };
@@ -157,15 +157,32 @@ export default function SiteSettingsForm({ initial }: Props) {
             className={inputCls}
           />
         </div>
-        <label className="mt-4 flex items-center gap-2 text-sm text-zinc-300">
-          <input
-            type="checkbox"
-            checked={f.allowRegister}
-            onChange={(e) => set("allowRegister", e.target.checked)}
-            className="accent-indigo-500"
-          />
-          开放新用户注册
-        </label>
+      </div>
+
+      {/* 搜索同步 */}
+      <div className={cardCls}>
+        <h3 className="mb-1 text-sm font-medium text-zinc-300">搜索索引（Meilisearch）</h3>
+        <p className="mb-4 text-xs text-zinc-500">
+          后台常驻同步进程会按此间隔把已发布提示词的增删改增量推送到 Meilisearch；保存后下一个轮询周期生效。
+        </p>
+        <div className="flex items-end gap-3">
+          <div className="w-40">
+            <label className={labelCls}>自动同步间隔（秒）</label>
+            <input
+              type="number"
+              min={0}
+              max={86400}
+              value={f.meiliSyncSeconds ?? 30}
+              onChange={(e) =>
+                set("meiliSyncSeconds", Math.max(0, Math.min(86400, parseInt(e.target.value) || 0)))
+              }
+              className={inputCls}
+            />
+          </div>
+          <div className="pb-2 text-xs text-zinc-500">
+            建议 10~60 秒；<span className="text-amber-300">填 0 关闭自动同步</span>（仅保留手动重建索引）
+          </div>
+        </div>
       </div>
 
       {/* 图标上传 */}
@@ -220,7 +237,7 @@ export default function SiteSettingsForm({ initial }: Props) {
       {/* 保存按钮 */}
       <div className="mb-6">
         <button
-          onClick={save}
+          onClick={() => save()}
           disabled={busy}
           className="rounded-lg bg-indigo-600 px-6 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
         >

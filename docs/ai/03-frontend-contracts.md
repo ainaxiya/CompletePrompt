@@ -62,8 +62,9 @@
 | MediaGallery（默认） | components/ | `{ media: MediaItem[] }` |
 | SectionMedia（具名） | MediaGallery.tsx | `{ items: MediaItem[]; altBase?: string }` |
 | RichEditor | components/ | `{ value: string; onChange: (v:string)=>void; placeholder?; minHeight?=280 }` |
-| CoverUploader | components/ | `{ value: string|null; onChange:(url:string|null)=>void; maxImageMB?=10 }` |
-| MediaUploader | components/ | `{ media: MediaItem[]; onChange:(m:MediaItem[])=>void; max?=9; maxImageMB?=10; maxVideoMB?=100 }` |
+| CoverUploader | components/ | `{ value: string|null; onChange:(url:string|null)=>void; maxImageMB?=10 }`（内部改用 UniversalUploader compact 单图 + 外链；props 不变） |
+| MediaUploader | components/ | `{ media: MediaItem[]; onChange:(m:MediaItem[])=>void; max?=9; maxImageMB?=10; maxVideoMB?=100 }`（内部改用 UniversalUploader 多选批量 + 外链输入；props 不变） |
+| **UniversalUploader** | components/ | **通用上传器（开源 react-dropzone），新上传需求一律复用它，见下方专门契约** |
 | AutoTranslate | components/ | `{ text: string; source: "zh"|"en"; index: number }`（source 与当前语言相同则不渲染） |
 | CopyButton（具名） | Buttons.tsx | `{ text: string; label?: string }` |
 | ActionButtons（具名） | Buttons.tsx | `{ promptId; initialLikes; initialLiked; initialFaved }`（内部调 /api/prompts/id/like|favorite） |
@@ -97,6 +98,15 @@ description?:string|null; content?:string|null; excerpt?:string|null
 `{ type: "image"|"video"|"embed"; url; poster?; role?: "cover"|"node"; section?:number; nodeNo?:number; nodeKind?: "image"|"video"; sourceUrl?; alt? }`
 - 贴链接识别用 `mediaFromUrl(url)`；embed 转换用 `normalizeEmbed(url)`（YouTube → youtube.com/embed/；B 站 → player.bilibili.com）
 - 图片后缀 jpeg/jpg/png/webp/gif/avif；视频 mp4/webm/mov/m4v
+
+### UniversalUploader 专门契约（components/UniversalUploader.tsx）
+基于 react-dropzone（MIT，已在 dependencies），**单选/批量/拖拽/进度/重试全覆盖**：
+- props：`{ multiple?=true; accept?="image"|"video"|"all"; maxFiles?(剩余可传数量); maxImageMB?=10; maxVideoMB?=100; concurrency?=3; endpoint?="/api/upload"; fieldName?="file"; compact?=false; disabled?; hint?; onUploaded(files: UploadedFile[]); onRejected?(count) }`
+- `UploadedFile = { name, url, type:"image"|"video", size }`；onUploaded **每完成一个文件回调一次**（数组 1 项），父组件逐个入库即可
+- compact=true：渲染虚线小按钮 + 行内进度/重试（封面、头像用）；否则是大拖拽区 + 缩略图任务列表（进度条/错误/单文件重试/清空）
+- 要求 endpoint：`POST FormData(<fieldName>=File)` → 200 `{ url, type?, size? }`，失败 `{ error }`；换头像那种不同端点用 endpoint/fieldName/maxImageMB 覆盖即可
+- 前端已做类型/大小前置校验（validator），但**服务端校验仍是最终边界**，不要因为组件拦了就删服务端 magic-byte
+- 调度真相在 ref（queueRef），state 仅渲染；新增定制（如自动入库、限制总数）在父组件用 maxFiles={上限-已有数} 控制，不要改组件内核
 
 ## 四、样式与 UI 约定
 

@@ -95,7 +95,7 @@ export async function POST(req: NextRequest) {
     const url = `/site-assets/${filename}?v=${Date.now()}`;
 
     await logAdminAction({
-      userId: admin.id,
+      adminId: admin.id,
       action: "update",
       targetType: "setting",
       detail: JSON.stringify({ upload: filename, size: file.size }),

@@ -96,7 +96,7 @@ export async function POST(req: NextRequest) {
   }
 
   await logAdminAction({
-    userId: user.id,
+    adminId: user.id,
     action: "batch_update",
     targetType: "prompt",
     detail: JSON.stringify({ action, ids, affected }),

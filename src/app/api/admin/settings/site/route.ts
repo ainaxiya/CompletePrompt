@@ -13,10 +13,10 @@ const DEFAULT_SITE = {
   siteDescription: "",
   searchKeywords: "",
   footerText: "",
-  allowRegister: true,
   logoIcon: "",
   favicon: "",
   appIcon: "",
+  meiliSyncSeconds: 30,
 };
 
 // GET /api/admin/settings/site
@@ -43,10 +43,11 @@ const siteSchema = z.object({
   siteDescription: z.string().max(2000).optional(),
   searchKeywords: z.string().max(500).optional(),
   footerText: z.string().max(500).optional(),
-  allowRegister: z.boolean().optional(),
   logoIcon: z.string().max(500).optional(),
   favicon: z.string().max(500).optional(),
   appIcon: z.string().max(500).optional(),
+  // Meilisearch 自动同步间隔（秒）：0 = 关闭自动同步，仅手动重建索引
+  meiliSyncSeconds: z.coerce.number().int().min(0).max(86400).optional(),
 });
 
 // PUT /api/admin/settings/site
@@ -76,7 +77,7 @@ export async function PUT(req: NextRequest) {
   await saveSetting("site", merged);
 
   await logAdminAction({
-    userId: admin.id,
+    adminId: admin.id,
     action: "update",
     targetType: "setting",
     detail: JSON.stringify({ section: "site", keys: Object.keys(parsed.data) }),

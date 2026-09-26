@@ -41,6 +41,7 @@
 | 搜索 | Meilisearch（`meilisearch` SDK 0.50） | 索引与 DB 双写同步 |
 | 认证 | jose（JWT HS256，cookie `token`，30 天）+ bcryptjs | 无 NextAuth |
 | 校验 | zod 3.25 | API 入参 |
+| 上传 | react-dropzone 14（MIT） | 拖拽/多选/批量，通用组件 UniversalUploader |
 | 安全 | sanitize-html | 富文本白名单清洗 |
 | 进程 | PM2（fork 单实例，`max_memory_restart: 1G`） | 配置 `ecosystem.config.cjs` |
 | 无 | 没有 middleware.ts、没有状态管理库、没有测试框架 | 鉴权在每个路由内调用 |
@@ -76,15 +77,16 @@ CompletePrompt/
 
 | 模型 | 作用 | 关键字段/注意 |
 |---|---|---|
-| User | 用户 | `role`: user/admin/importer；`adminRoleId` 关联后台角色（为空=超管）；`membershipLevel` free/pro/vip；`status` 必须 active 才能登录后台 |
+| **AdminAccount** | **独立管理员体系（2026-06 九大改造第 1 期）** | username 唯一（与 User 表双表查重）、passwordHash、status active/disabled、isSuper、adminRoleId；createdIp/lastLoginAt/lastLoginIp；迁移自旧 User(role=admin)，旧行 role 改 `admin_legacy` |
+| User | 前台会员 | `role`: user/importer/admin_legacy（**不再做后台鉴权**）；新增 phone 唯一、allowPublish、registerIp、lastLoginAt/lastLoginIp；`membershipLevel` 列保留但界面已全删；`adminRoleId` 历史遗留不用于鉴权；封禁 status=banned |
 | Category | 分类 | name 唯一、`slug` 唯一、sort；注意 Prompt.category 存的是**分类名字符串**不是外键 |
-| Prompt | 提示词（核心） | 见下 |
+| Prompt | 提示词（核心） | 见下；新增 `adminAuthorId`（后台管理员发布的真实作者），此时 `userId` 挂系统账号 `system`(role=importer)，见 lib/system-user.ts |
 | Like / Favorite | 点赞/收藏 | 复合主键 `(userId, promptId)`，切换式（再点取消） |
 | Comment | 评论 | 自关联 `parentId` 支持回复；status: published/hidden/deleted |
-| SiteSetting | 站点配置 | **键值表**，key 为 `site`/`basic`/`publish`/`membership`，value 是 JSON 字符串 |
+| SiteSetting | 站点配置 | **键值表**，key 为 `site`/`basic`/`publish`/`membership`/`register`，value 是 JSON 字符串；site.meiliSyncSeconds（0=关自动同步）、register.fields.{email,nickname,phone}=off/optional/required |
 | TranslationCache | 翻译缓存 | 主键 `(hash, sourceLang, targetLang)` |
-| AdminRole | 后台角色 | permissions 字符串数组，`["*"]` = 全部；默认 4 个角色见 rbac.ts |
-| AdminLog | 管理员日志 | 只增不删；action: create/update/delete/batch_update/login/logout |
+| AdminRole | 后台角色 | permissions 字符串数组，`["*"]` = 全部；默认 4 个角色见 rbac.ts；同时关联 users（历史）与 admins |
+| AdminLog | 管理员日志 | 只增不删；action: create/update/delete/batch_update/login/logout；**新日志挂 adminId**（userId 仅历史数据），查询按 AdminAccount.username 模糊 |
 
 **Prompt 模型重点**：
 - `type`: text/image/video/audio（默认 text）；`status`: draft/pending/published/rejected（默认 published）
@@ -122,13 +124,15 @@ CompletePrompt/
 | `/prompts` | 提示词列表/批量操作 | PromptManager.tsx |
 | `/prompts/new`、`/prompts/[id]/edit` | 新建/编辑 | PromptForm.tsx |
 | `/categories` | 分类管理 | CategoryManager.tsx |
-| `/users` | 用户管理 | UserManager.tsx |
+| `/users` | 用户管理（仅 role=user；搜索/新建/详情/重置密码/封禁/发布权限/删除） | UserManager.tsx |
+| `/admins` | **管理员设置（仅 isSuper 可见）**：管理员 CRUD/禁启用/重置密码 | AdminManager.tsx |
 | `/roles` | 角色权限 | RoleManager.tsx |
-| `/logs` | 操作日志 | page.tsx |
-| `/settings/basic` | 基本设置（站点名默认值/注册/默认语言） | SettingsForms.tsx |
-| `/settings/site` | **网站设置**（标题/关键字/描述/favicon/LOGO/appIcon） | SiteSettingsForm.tsx |
+| `/logs` | 操作日志（按管理员**账号名**模糊查询，彩色查询按钮） | page.tsx |
+| `/settings/site` | **网站设置**（标题/关键字/描述/favicon/LOGO/appIcon + **Meili 同步间隔秒数**） | SiteSettingsForm.tsx |
 | `/settings/publish` | 发布策略（auto/review、上传开关与限额） | SettingsForms.tsx |
-| `/settings/membership` | 会员等级 | SettingsForms.tsx |
+| `/settings/membership` | **注册设置**（注册总开关 + 邮箱/昵称/手机号 off/optional/required，OptionDropdown） | SettingsForms.tsx RegisterSettingsForm |
+
+> 基本设置页已删除（内容并入网站设置）；独立管理员登录页在路由组 `(admin-auth)`：`/guanli-7k2m9x/login`，与会员登录完全分离（Cookie：前台 `token` / 后台 `admin_token`）。
 
 ## 7. API 路由索引（src/app/api/）
 
@@ -233,8 +237,10 @@ CompletePrompt/
 |---|---|
 | db-manual.mjs | 启动本地 embedded-postgres（`npm run db:up`） |
 | seed.mjs | 种子数据 |
-| create-admin.mjs | 创建管理员账号 |
+| create-admin.mjs | 创建管理员账号（旧体系，新体系直接后台管理员设置里加，或用 migrate-admins.mjs 平移） |
+| migrate-admins.mjs | **第 1 期管理员迁移**：User(role=admin) 按原 ID 平移 AdminAccount（无角色→isSuper），回填 AdminLog.adminId，旧行置 admin_legacy；幂等；**先 `prisma db push`**（`npm run migrate:admins`） |
 | reindex-meili.mjs | 全量重建 Meili 索引（数据修复/换索引后跑） |
+| **meili-sync-daemon.mjs** | **Meili 秒级增量同步守护**（PM2 常驻）：读 site.meiliSyncSeconds 轮询 updatedAt 水位（.meili-sync-state.json），增量 upsert/delete，每 10 分钟硬删除对账；0=空转；启动 `pm2 start scripts/meili-sync-daemon.mjs --name CompletePrompt-MeiliSync && pm2 save`（`npm run meili:sync`） |
 | migrate-categories.mjs / migrate-cats-v2.mjs | 分类迁移 |
 | parse_lib.py / parse_packs.py / seed_packs.mjs | 早期解析导入（`npm run parse`） |
 | liblib-enumerate-feed.mjs | 枚举 liblib 作品 feed |
@@ -268,10 +274,27 @@ liblib 系列是采集系统雏形，未来规划改造为 Crawlee connector（�
 7. open redirect 防护 safeNextPath；登录后台所有写操作落 AdminLog。
 8. zod 校验所有公开 API 入参；media URL 只允许相对路径或 http/https。
 
-## 16. 路线图（用户已规划，未开工 —— AI 动相关代码前先与用户确认现状）
+## 16. 路线图（九大功能改造，分 4 期 —— AI 动相关代码前先与用户确认现状）
 
-1. **后台集成 AI 能力**：经 llm-api.net（Key 仅放服务端 `.env`，绝不下发浏览器），新建 `/api/admin/ai/*` 服务端代理；功能：自动打标签、生成简介、中英翻译、润色。
-2. **多站点采集系统**：技术选型 **Crawlee（TypeScript/Node）**；规划结构 `crawler/connectors/<站点>/`（liblib 现有 6 个脚本改造为第一个 connector）+ `core/pipeline.ts` 统一入库管道 + `CrawlTask` 表 + 后台采集中心；目标站点数万个量级，具体站点名单待用户提供。
+- **第 1 期（✅ 2026-09-24 已上线）**：①独立 AdminAccount 管理员体系+独立登录页；②会员表扩展（phone/allowPublish/IP/登录时间，用户管理 CRUD）；③删基本设置、网站设置加 Meili 同步间隔；⑥注册字段配置；⑦日志账号模糊查询；⑨OptionDropdown 全站少量选项统一；Meili PM2 守护进程。
+- **第 2 期（✅ 2026-09-24 与第 1 期一起上线）**：⑤原作品链接 `Prompt.sourceUrl` 前后台输入框（dict 键 `publish.field.sourceUrl`；三处 zod 用独立 sourceUrl 规则，空串=清空）+ TipTap v3 富文本替换（见 17.1）；⑧详情页点赞收藏按钮美化（components/Buttons.tsx ActionButtons：胶囊+SVG+btn-pop 动画，API 契约 `{count,active}`/`{active}` 不变）；后台提示词列表/仪表盘待审核展示 adminAuthor 真实管理员作者（靛蓝「管理员发布」徽章）。
+  - **17.1 TipTap 编辑器架构**：`components/editor/TiptapVideo.ts`（自定义块级 video 原子节点）+ `components/RichEditor.tsx`（useEditor `immediatelyRender:false`；StarterKit heading [2,3] + Underline/Link/Image/Placeholder；工具栏图片/视频复用 UniversalUploader compact 单文件；Props 契约 `{value,onChange,placeholder,minHeight,maxImageMB,maxVideoMB}` 不变；外部 value 用 lastEmitted ref + setContent(emitUpdate:false) 防光标回灌）；样式 `.tiptap-prose` 在 globals.css；sanitize.server.ts 已放 pre/code；输出仍为 HTML 字符串，富文本/纯文本双形态判断走 lib/rich.ts isHtmlContent，历史数据 plainToHtml 且剥 `^\[\d+\]` 标记。
+- **第 3 期（✅ 2026-09-24 已上线）**：④站内自研评论系统（PG 原生于现有 Comment 半成品上加固）。设计文档 `docs/ai/06-comment-system-design.md`。
+  - **安全注意**：公开 GET/POST /api/comments 必须经 `presentComment()` 视图投影，**ip/ua 只允许出现在后台 /api/admin/comments**（首次上线漏投影曾把 ip/ua 下发给游客，已当日修复重部署）。
+  - **18.1 评论架构**：仅登录会员可评、游客只读；两级嵌套（顶级+一级回复，parentId 自关联，回复只能挂顶级）；顶级 20 条/页（`COMMENT.PAGE_SIZE`，lib/comment-policy.ts）。
+  - **18.2 防刷链**（POST /api/comments 顺序）：401 → User.commentBanned 403 → zod(≤1000字) → comment.enabled 全站开关 → prompt 存在/published/未 commentsClosed → 父评论合法 → DB count 限频：60s 内 ≥6 硬拒 429、≥4（即第4条起）或 10min 内已触发则要求算术验证码（lib/captcha.ts 内存一次性 5 分钟，GET /api/captcha；前端 429 `captchaRequired` 内联展开）→ 敏感词星号替换直发（maskSensitive，词库存 SiteSetting `comment.sensitiveWords`）→ 写库带 ip/ua + commentCount+1。
+  - **18.3 数据/接口**：新表 CommentLike（@@unique([commentId,userId])，onDelete:Cascade）；User.commentBanned、Prompt.commentsClosed、Comment.ip/ua；状态 published/hidden/deleted，计数只随 published↔其他迁移；有公开回复的已删顶级评论返回 deleted 占位（GET where OR：published 或 deleted 且有 published replies）。接口：GET/POST /api/comments（**返回 `{list,...}` 不是 comments**）、POST /api/comments/[id]/like（`{active,count}`，修旧版 404）、PATCH/DELETE /api/comments/[id]、后台 GET /api/admin/comments + POST /api/admin/comments/batch、PUT /api/admin/settings/comment（独立接口不走通用 settings 白名单）。
+  - **18.4 前端/后台**：CommentSection props 扩展 `{closed, initialTotal}`，CommentData 加 `liked/deleted`，详情页服务端带当前用户已赞 likes 集合；后台「评论管理」CommentManager（状态 Tab+筛选+单条/批量+敏感词库与全站开关），用户管理 OptionDropdown 评论禁言，PromptForm 关评勾选。导航插入评论后超管 splice 索引改 6。
+- **第 4 期（✅ 2026-09-24 已上线）**：全站手机/平板响应式（前台精适配、后台保底，纯样式零接口/零 schema 变更）。设计文档 `docs/ai/07-responsive-design.md`。
+  - **断点策略**：Tailwind 默认断点，基础=手机，`md`(768) 为导航形态分界；硬规则：360px 零页面级横向滚动（仅后台宽表/富文本代码块允许内部横滑）、主操作触控 ≥38–40px、Tab 栏 ≥48px。
+  - **手机导航**：新增 `components/MobileTabBar.tsx`（client；`md:hidden fixed bottom-0 z-30`，4 标签 首页/热门/分类/我的，52px 高+`env(safe-area-inset-bottom)`，无凸起发布键；发布入口保留在会员中心/空状态）；SiteHeader `<nav>` 改 `hidden md:flex`（<md 整块隐藏，发布键随之不在顶栏）；`(site)/layout.tsx` main `pb-24 md:pb-8`、footer `pb-16 md:pb-0` 防遮挡。
+  - **前台微调**：首页 hero `px-5 py-8 sm:px-6 sm:py-10`；详情正文卡 `p-3 sm:p-4`；评论区卡 padding/回复缩进 ml-8→sm:ml-12/操作行 flex-wrap/发送键 min-h-40；会员中心统计卡收紧、操作按钮 `flex-1 sm:flex-none`（LogoutButton 外包 `[&>button]:w-full`）；CopyButton 加 `shrink-0 whitespace-nowrap`（修标签占满行时按钮被压竖排）。
+  - **后台保底**：内容区 `p-4 lg:p-7`；筛选输入 `min-w-[160px] sm:min-w-[220px]`（评论搜索手机 w-full）；UserManager/AdminManager 弹窗 `p-4 sm:p-6`，双列表单 `grid-cols-1 min-[380px]:grid-cols-2`；宽表 overflow-x-auto/导航横滑/角色弹窗均维持原样。
+  - **验收方式**：playwright-core（临时目录、channel=msedge，不进项目依赖）四档视口 360/390/768/1280 逐页测 scrollWidth==clientWidth + 截图；全页截图里 fixed Tab 栏会被拼接在页面中段，属工具伪影不是 bug。
+- 部署第 1 期顺序：`npx prisma db push`（只加可空列/新表）→ `node scripts/migrate-admins.mjs` → `npm run build` → `pm2 restart CompletePrompt` → `pm2 start scripts/meili-sync-daemon.mjs --name CompletePrompt-MeiliSync`。
+- 另两条长期规划：
+  1. **后台集成 AI 能力**：经 llm-api.net（Key 仅放服务端 `.env`，绝不下发浏览器），新建 `/api/admin/ai/*` 服务端代理；功能：自动打标签、生成简介、中英翻译、润色。
+  2. **多站点采集系统**：技术选型 **Crawlee（TypeScript/Node）**；规划结构 `crawler/connectors/<站点>/`（liblib 现有 6 个脚本改造为第一个 connector）+ `core/pipeline.ts` 统一入库管道 + `CrawlTask` 表 + 后台采集中心。
 
 ## 17. 关键文件速查（改需求时从这里进）
 
@@ -284,7 +307,8 @@ liblib 系列是采集系统雏形，未来规划改造为 Crawlee connector（�
 | 投稿校验与发布流转 | src/app/api/prompts/route.ts |
 | 搜索/筛选/排序 | src/lib/meili.ts + src/app/(site)/search/page.tsx |
 | 权限点/角色 | src/lib/permissions.ts、rbac.ts |
-| 正文渲染/清洗 | src/lib/rich.ts、sanitize.server.ts、components/RichEditor.tsx |
+| 正文渲染/清洗（TipTap） | src/lib/rich.ts、sanitize.server.ts、components/RichEditor.tsx、components/editor/TiptapVideo.ts |
+| 原作品链接字段 | Prompt.sourceUrl；publish/page.tsx、admin/PromptForm.tsx、api/prompts、api/admin/prompts（POST+PATCH） |
 | 上传安全 | src/app/api/upload/route.ts、api/admin/settings/upload/route.ts |
 | 文案/中英翻译 | src/lib/dict.ts、translate.ts |
 | 颜色/样式令牌 | src/app/globals.css |
