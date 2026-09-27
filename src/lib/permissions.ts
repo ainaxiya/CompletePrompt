@@ -18,6 +18,7 @@ export const PERMISSIONS = {
   CATEGORY_DELETE: "category:delete",
   COMMENT_READ: "comment:read",
   COMMENT_MODERATE: "comment:moderate",
+  CRAWL_MANAGE: "crawl:manage",
   LOG_READ: "log:read",
   SETTING_READ: "setting:read",
   SETTING_WRITE: "setting:write",
@@ -31,6 +32,7 @@ export const PERMISSION_GROUPS = [
   { label: "角色管理", perms: ["role:read", "role:write", "role:delete"] },
   { label: "分类管理", perms: ["category:read", "category:write", "category:delete"] },
   { label: "评论管理", perms: ["comment:read", "comment:moderate"] },
+  { label: "采集管理", perms: ["crawl:manage"] },
   { label: "操作日志", perms: ["log:read"] },
   { label: "站点设置", perms: ["setting:read", "setting:write"] },
 ];

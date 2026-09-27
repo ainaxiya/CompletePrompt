@@ -81,7 +81,7 @@ export async function ensureDefaultRoles() {
       },
       {
         name: "内容管理员",
-        permissions: ["prompt:read", "prompt:write", "prompt:delete", "prompt:feature", "prompt:batch", "category:read", "category:write", "comment:read", "comment:moderate"],
+        permissions: ["prompt:read", "prompt:write", "prompt:delete", "prompt:feature", "prompt:batch", "category:read", "category:write", "comment:read", "comment:moderate", "crawl:manage"],
         description: "管理提示词、分类、评论",
       },
       {

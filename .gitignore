@@ -9,6 +9,7 @@ next-env.d.ts
 .env
 .env.local
 .env.*.local
+AGENTS.md
 
 # 本地数据与媒体（大文件另行传输，见 README）
 public/uploads/

@@ -1,11 +1,11 @@
-# 完整提示词 CompletePrompt（v0.2）
+# 完整提示词 CompletePrompt（v0.4）
 
 收集、分享、发现优质 AI 提示词的社区网站。内置 8400+ 条真实创作过程提示词（图片/视频/音频/文本），其中 4650+ 条含与提示词分段精确对应的实拍效果图与视频截图，全部本地化存储。
 
 - 在线演示：https://www.wango8.com
-- PC 端截图：[PC.png](https://github.com/ainaxiya/CompletePrompt/blob/214691d3282ec41f3aa231b9f841b8d1050e0445/PC.png)
-- 手机端截图：[mobile.png](https://github.com/ainaxiya/CompletePrompt/blob/214691d3282ec41f3aa231b9f841b8d1050e0445/mobile.png)
-
+- PC 端截图：![PC.png](https://github.com/ainaxiya/CompletePrompt/blob/214691d3282ec41f3aa231b9f841b8d1050e0445/PC.png)
+- 手机端截图：![mobile.png](https://github.com/ainaxiya/CompletePrompt/blob/214691d3282ec41f3aa231b9f841b8d1050e0445/mobile.png)
+-一键采集截图<img src="caiji.png" width="500" alt="采集">
 ## 功能总览
 
 ### 前台
@@ -24,7 +24,8 @@
 - **提示词管理**：增删改查、批量操作（加精 / 热门 / 发布 / 下线 / 删除）、发布时间与更新时间分离、单篇关闭评论
 - **用户管理**：会员增删改查、登录封禁、**评论禁言（commentBanned）**、发布权限控制
 - **评论管理**：状态 Tab（正常/隐藏/已删除）+ 内容/提示词 ID/用户 ID 筛选、单条与批量隐藏/恢复/删除、敏感词库维护、全站评论开关
-- **角色权限（RBAC）**：多管理员多角色，19 项细粒度权限按组勾选
+- **采集管理**：针对外部站点（首发 LibLib TV）一键获取更新、自动去重、勾选或全部采集入库——自动拉取作品提示词全文、封面、节点图片与视频截图（sharp webp 化 + ffmpeg 截帧，全部本地化），后台异步任务 + 进度轮询，入库即上 Meili 索引
+- **角色权限（RBAC）**：多管理员多角色，细粒度权限按组勾选（含 `crawl:manage` 采集权限）
 - **操作日志**：所有管理员写操作自动落日志，**只增不可改删**，支持管理员/操作/对象过滤
 - **分类管理**：中英双语分类增删改查排序
 - **网站设置**：站点名称/介绍/搜索关键字/页脚、LOGO / Favicon / PWA 图标上传、注册字段配置、Meili 同步间隔
@@ -49,14 +50,15 @@
 │   ├── app/
 │   │   ├── (site)/                    # 前台：首页/详情/分类/搜索/登录/注册/会员/发布
 │   │   ├── (admin)/guanli-7k2m9x/     # 后台（隐蔽路径，见 src/lib/admin-path.ts）
-│   │   └── api/                       # REST API（前台 + admin + 评论 + 验证码 + 上传）
+│   │   └── api/admin/collect/         # 采集管理 API（sources/items/fetch/import/jobs）
+│   │       └── …                      # REST API（前台 + admin + 评论 + 验证码 + 上传）
 │   ├── components/
 │   │   ├── MobileTabBar.tsx           # 手机底部 Tab 导航（<md 显示）
 │   │   ├── CommentSection.tsx         # 评论区（验证码内联/乐观点赞/分页加载）
 │   │   ├── RichEditor.tsx             # TipTap 富文本编辑器
-│   │   └── admin/                     # 后台组件（CommentManager/UserManager/…）
-│   └── lib/                           # auth / rbac / settings / comment-policy / captcha / db / i18n
-├── prisma/schema.prisma               # 数据模型（含 Comment / CommentLike）
+│   │   └── admin/                     # 后台组件（CollectManager/CommentManager/UserManager/…）
+│   └── lib/                           # auth / rbac / settings / comment-policy / captcha / crawl-* / db / i18n
+├── prisma/schema.prisma               # 数据模型（含 Comment / CommentLike / CrawlItem / CrawlJob）
 ├── scripts/                           # 运维、迁移与采集脚本（见下）
 ├── database/prompthub-dump.dump       # 全量数据库备份（pg_restore 可恢复，不入 git 时另行获取）
 ├── docker-compose.yml                 # 服务器版 PG18 + Meilisearch 编排
@@ -129,6 +131,8 @@ pm2 start ecosystem.config.cjs
 
 ## 版本历程
 
+- **v0.4**：后台新增采集管理（LibLib TV 一键获取更新/去重/勾选或全部采集入库/异步任务进度）；后台导航重排与改名；前台彻底移除后台入口（两套用户体系零关联）；版本号 FULL PROMPT v0.4
+- **v0.3**：前台会员页移除全部后台入口与管理员标识
 - **v0.2 第 4 期**：全站 PC/平板/手机响应式，手机底部 Tab 导航；后台窄屏保底
 - **v0.2 第 3 期**：站内自研评论系统（两级嵌套/点赞/限频验证码/敏感词屏蔽/禁言/关评/后台评论管理）
 - **v0.2 第 2 期**：TipTap v3 富文本、原作品链接、点赞收藏按钮美化、管理员作者署名

@@ -118,6 +118,7 @@ model Prompt {
   likes     Like[]
   favorites Favorite[]
   comments  Comment[]
+  crawlItem CrawlItem?
 
   @@index([status, createdAt(sort: Desc)])
   @@index([type])
@@ -249,4 +250,53 @@ model CommentLike {
 
   @@unique([commentId, userId])
   @@index([userId])
+}
+
+// 外部站点采集：远端作品快照（一键获取更新时 upsert，入库后关联 Prompt）
+model CrawlItem {
+  id       Int     @id @default(autoincrement())
+  source   String  @default("libtv") // 采集源标识，目前仅 libtv
+  remoteId String // LIBTV projectUuid
+  templateUuid String?
+  title    String
+  author   String?
+  coverUrl String? @db.Text
+  tags     String[]
+  likeCount Int    @default(0)
+  // 作品主类型：首次见到时未知(null)，入库时按节点统计回填 image/video/audio/text
+  kind     String?
+  remoteCreatedAt DateTime?
+  remoteUpdatedAt DateTime?
+  // new=待采集 collected=已入库 failed=采集失败（可重试）
+  status   String  @default("new")
+  error    String? @db.Text
+  promptId Int?    @unique
+  prompt   Prompt? @relation(fields: [promptId], references: [id])
+  firstSeenAt    DateTime @default(now())
+  lastSeenAt     DateTime @updatedAt
+  collectedAt    DateTime?
+
+  @@unique([source, remoteId])
+  @@index([source, status, remoteUpdatedAt(sort: Desc)])
+  @@index([source, remoteUpdatedAt(sort: Desc)])
+}
+
+// 采集入库后台任务（异步执行，前端轮询进度）
+model CrawlJob {
+  id        Int      @id @default(autoincrement())
+  source    String   @default("libtv")
+  kind      String   @default("import")
+  // running=进行中 done=已结束（失败数见 failed，整任务异常写 message）
+  status    String   @default("running")
+  total     Int      @default(0)
+  done      Int      @default(0)
+  succeeded Int      @default(0)
+  failed    Int      @default(0)
+  message   String?  @db.Text
+  itemIds   Int[]
+  adminId   Int
+  createdAt DateTime @default(now())
+  finishedAt DateTime?
+
+  @@index([status, createdAt(sort: Desc)])
 }

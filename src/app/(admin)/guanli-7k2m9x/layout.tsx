@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/auth";
 import { ADMIN_BASE } from "@/lib/admin-path";
+import { getAdminPermissions, PERMISSIONS } from "@/lib/rbac";
 import LogoutButton from "@/components/LogoutButton";
 
 export const dynamic = "force-dynamic";
@@ -14,22 +15,22 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     redirect(`${ADMIN_BASE}/login?next=${encodeURIComponent(ADMIN_BASE)}`);
   }
 
-  const nav: { href: string; label: string; icon: string; superOnly?: boolean }[] = [
+  // 仅采集管理按细粒度权限显隐（其余栏目沿用历史行为，页面/API 内部各自鉴权）
+  const perms = admin.isSuper ? null : await getAdminPermissions(admin.id);
+  const nav: { href: string; label: string; icon: string; superOnly?: boolean; perm?: string }[] = [
     { href: ADMIN_BASE, label: "仪表盘", icon: "📊" },
-    { href: `${ADMIN_BASE}/prompts`, label: "提示词管理", icon: "📝" },
-    { href: `${ADMIN_BASE}/categories`, label: "分类管理", icon: "🗂️" },
-    { href: `${ADMIN_BASE}/users`, label: "用户管理", icon: "👥" },
-    { href: `${ADMIN_BASE}/comments`, label: "评论管理", icon: "💬" },
-    { href: `${ADMIN_BASE}/roles`, label: "角色权限", icon: "🔑", superOnly: false },
-    { href: `${ADMIN_BASE}/logs`, label: "操作日志", icon: "📋" },
-    { href: `${ADMIN_BASE}/settings/publish`, label: "发布设置", icon: "📤" },
-    { href: `${ADMIN_BASE}/settings/membership`, label: "注册设置", icon: "🧾" },
     { href: `${ADMIN_BASE}/settings/site`, label: "网站设置", icon: "🌐" },
-  ];
-  // 管理员设置仅超级管理员可见（评论管理插入后索引后移一位）
-  if (admin.isSuper) {
-    nav.splice(6, 0, { href: `${ADMIN_BASE}/admins`, label: "管理员设置", icon: "🛡️", superOnly: true });
-  }
+    { href: `${ADMIN_BASE}/prompts`, label: "提示词管理", icon: "📝" },
+    { href: `${ADMIN_BASE}/categories`, label: "提示词分类", icon: "🗂️" },
+    { href: `${ADMIN_BASE}/collect`, label: "采集管理", icon: "📡", perm: PERMISSIONS.CRAWL_MANAGE },
+    { href: `${ADMIN_BASE}/settings/publish`, label: "发布设置", icon: "📤" },
+    { href: `${ADMIN_BASE}/users`, label: "用户管理", icon: "👥" },
+    { href: `${ADMIN_BASE}/settings/membership`, label: "注册设置", icon: "🧾" },
+    { href: `${ADMIN_BASE}/comments`, label: "评论管理", icon: "💬" },
+    { href: `${ADMIN_BASE}/admins`, label: "管理员设置", icon: "🛡️", superOnly: true },
+    { href: `${ADMIN_BASE}/roles`, label: "权限角色", icon: "🔑" },
+    { href: `${ADMIN_BASE}/logs`, label: "后台操作日志", icon: "📋" },
+  ].filter((n) => (!n.superOnly || admin.isSuper) && (!n.perm || !perms || perms.has(n.perm)));
 
   return (
     <div
@@ -76,7 +77,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           <div className="mt-4 flex items-center gap-2 px-2">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/logo/icon.png" alt="完整提示词" className="h-5 w-5 rounded object-cover opacity-80" />
-            <span className="text-[10px] tracking-widest text-zinc-600">FULL PROMPT</span>
+            <span className="text-[10px] tracking-widest text-zinc-600">FULL PROMPT v0.4</span>
           </div>
         </div>
       </aside>

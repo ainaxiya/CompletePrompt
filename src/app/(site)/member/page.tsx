@@ -1,11 +1,10 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
-import { getCurrentUser, getCurrentAdmin } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
 import PromptCard from "@/components/PromptCard";
 import LogoutButton from "@/components/LogoutButton";
 import { getServerLocale, translate as t } from "@/lib/i18n";
-import { ADMIN_BASE } from "@/lib/admin-path";
 
 export const dynamic = "force-dynamic";
 
@@ -28,8 +27,6 @@ export default async function MemberPage() {
   const locale = await getServerLocale();
   const user = await getCurrentUser();
   if (!user) redirect("/login?next=/member");
-  // 同一浏览器若同时登录了管理员账号，显示后台入口
-  const admin = await getCurrentAdmin();
 
   const [myPosts, favs, postCount, favCount, agg] = await Promise.all([
     db.prompt.findMany({
@@ -81,25 +78,12 @@ export default async function MemberPage() {
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="truncate text-lg font-bold text-zinc-50">{user.username}</h1>
-            {admin && (
-              <span className="rounded bg-indigo-500/15 px-1.5 py-0.5 text-[11px] text-indigo-300">
-                {admin.isSuper ? "超级管理员" : "管理员"}
-              </span>
-            )}
           </div>
           <p className="mt-1 text-xs text-zinc-500">
             {t(locale, "member.memberSince")}：{user.createdAt.toISOString().slice(0, 10)}
           </p>
         </div>
         <div className="flex w-full flex-wrap gap-2 sm:w-auto">
-          {admin && (
-            <Link
-              href={ADMIN_BASE}
-              className="flex-1 rounded-lg border border-indigo-500/50 bg-indigo-500/10 px-4 py-2 text-center text-sm font-medium text-indigo-300 hover:bg-indigo-500/20 sm:flex-none"
-            >
-              后台管理
-            </Link>
-          )}
           <Link href="/publish"
             className="flex-1 rounded-lg bg-emerald-500 px-4 py-2 text-center text-sm font-medium text-zinc-950 hover:bg-emerald-400 sm:flex-none">
             + {t(locale, "nav.publish")}
