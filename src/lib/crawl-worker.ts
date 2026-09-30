@@ -250,6 +250,15 @@ export async function runCrawlJob(jobId: number) {
         failed++;
         const msg = String(e?.message || e).slice(0, 300);
         await db.crawlItem.update({ where: { id: itemId }, data: { status: "failed", error: msg } }).catch(() => {});
+        // 进度区只显示最后一条失败
+        const it = await db.crawlItem.findUnique({ where: { id: itemId }, select: { title: true } }).catch(() => null);
+        const lastError = `${it?.title ? `《${it.title}》：` : ""}${msg}`.slice(0, 300);
+        const done = succeeded + failed;
+        await db.crawlJob.update({
+          where: { id: jobId },
+          data: { done, succeeded, failed, lastError },
+        });
+        continue;
       }
       const done = succeeded + failed;
       await db.crawlJob.update({

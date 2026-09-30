@@ -150,6 +150,56 @@ export function extractNodes(snapshotData: any): LibtvNode[] {
   return out;
 }
 
+// ─── 探测作品画布是否公开可采 ───
+// 返回：ok=有媒体节点可采；empty=画布未公开（跳过不采集）；error=探测失败（保守保留，入库时再判）
+export type ProbeVerdict = "ok" | "empty" | "error";
+export async function probeTemplate(templateUuid: string): Promise<{ verdict: ProbeVerdict; message?: string }> {
+  try {
+    const detail = await fetchLibtvDetail(templateUuid);
+    return extractNodes(detail.snapshotData).length > 0 ? { verdict: "ok" } : { verdict: "empty" };
+  } catch (e: any) {
+    const msg = String(e?.message || e);
+    // 作品删除/私有：等同不可采
+    if (/删除|私有|不存在|10051/.test(msg)) return { verdict: "empty", message: msg.slice(0, 100) };
+    return { verdict: "error", message: msg.slice(0, 100) };
+  }
+}
+
+export interface FilterResult {
+  collectable: LibtvFeedItem[];
+  emptyItems: LibtvFeedItem[]; // 未公开画布（不采集）
+  probeErrors: number; // 探测失败（保守当作可采保留）
+}
+
+// 并发探测 feed 列表，剔除未公开提示词画布的作品
+export async function filterCollectableItems(items: LibtvFeedItem[], concurrency = 5): Promise<FilterResult> {
+  const queue = items.slice();
+  const collectable: LibtvFeedItem[] = [];
+  const emptyItems: LibtvFeedItem[] = [];
+  let probeErrors = 0;
+  async function worker() {
+    while (queue.length) {
+      const it = queue.shift()!;
+      if (!it.templateUuid) {
+        emptyItems.push(it);
+        continue;
+      }
+      const { verdict } = await probeTemplate(it.templateUuid);
+      if (verdict === "empty") emptyItems.push(it);
+      else {
+        if (verdict === "error") probeErrors++;
+        collectable.push(it);
+      }
+      await sleep(150); // 温和限速，规避 429
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, () => worker()));
+  // 保持 feed 原顺序
+  const order = new Map(items.map((it, i) => [it.projectUuid, i]));
+  collectable.sort((a, b) => (order.get(a.projectUuid) || 0) - (order.get(b.projectUuid) || 0));
+  return { collectable, emptyItems, probeErrors };
+}
+
 // ─── 构建入库内容与媒体下载计划 ───
 export interface MediaPlanItem {
   section: number; // 对应正文 [N]

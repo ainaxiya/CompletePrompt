@@ -23,6 +23,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
     done: job.done,
     succeeded: job.succeeded,
     failed: job.failed,
+    lastError: job.lastError,
     message: job.message,
     createdAt: job.createdAt,
     finishedAt: job.finishedAt,

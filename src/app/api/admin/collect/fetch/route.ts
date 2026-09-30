@@ -3,7 +3,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { PERMISSIONS, requirePerm, logAdminAction, getClientIp } from "@/lib/rbac";
 import { getCrawlSource } from "@/lib/crawl-sources";
-import { fetchLibtvFeed, parseCnDate, type LibtvFeedItem } from "@/lib/crawl-libtv";
+import { fetchLibtvFeed, filterCollectableItems, parseCnDate, type LibtvFeedItem } from "@/lib/crawl-libtv";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +20,8 @@ function toTags(it: LibtvFeedItem): string[] {
     .map((s) => s.slice(0, 30));
 }
 
-// POST /api/admin/collect/fetch  一键获取远端最新作品（仅拉列表，不下载正文/媒体）
+// POST /api/admin/collect/fetch  一键获取远端最新作品
+// 流程：拉 feed → 逐条探测作品画布 → 未公开提示词的作品直接剔除，不进待采集列表
 export async function POST(req: NextRequest) {
   const { admin, ok } = await requirePerm(PERMISSIONS.CRAWL_MANAGE);
   if (!ok) return NextResponse.json({ error: "forbidden" }, { status: 403 });
@@ -38,7 +39,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "拉取失败：" + String(e?.message || e).slice(0, 160) }, { status: 502 });
   }
 
-  const items = feed.items;
+  // 探测：未公开画布的作品不采集（探测接口临时失败的保守保留）
+  const { collectable: items, emptyItems, probeErrors } = await filterCollectableItems(feed.items, 5);
+
+  // 已入库/列表中已存在的空画布作品：new/failed 直接清除（重试永远失败）；collected 保留（历史上可采过）
+  const emptyIds = emptyItems.map((it) => it.projectUuid);
+  const removedStale = emptyIds.length
+    ? (
+        await db.crawlItem.deleteMany({
+          where: { source, remoteId: { in: emptyIds }, status: { in: ["new", "failed"] } },
+        })
+      ).count
+    : 0;
+
   const remoteIds = items.map((it) => it.projectUuid);
   const existing = await db.crawlItem.findMany({
     where: { source, remoteId: { in: remoteIds } },
@@ -95,9 +108,19 @@ export async function POST(req: NextRequest) {
     adminId: admin.id,
     action: "collect_fetch",
     targetType: "crawl_source",
-    detail: `${source} 获取${items.length}条：新发现${newCount} 已采集${collectedTouched}（其中有更新${updatedCount}）`,
+    detail: `${source} feed ${feed.items.length}条：可采${items.length} 未公开画布剔除${emptyItems.length} 清理历史残留${removedStale} 新发现${newCount}`,
     ip: await getClientIp(),
   });
 
-  return NextResponse.json({ fetched: items.length, newCount, collectedTouched, updatedCount, hasMore: feed.hasMore });
+  return NextResponse.json({
+    fetched: feed.items.length,
+    collectable: items.length,
+    skippedEmpty: emptyItems.length,
+    removedStale,
+    probeErrors,
+    newCount,
+    collectedTouched,
+    updatedCount,
+    hasMore: feed.hasMore,
+  });
 }

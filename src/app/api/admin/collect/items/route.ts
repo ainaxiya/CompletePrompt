@@ -43,7 +43,7 @@ export async function GET(req: NextRequest) {
     counts: Object.fromEntries(counts.map((c) => [c.status, c._count._all])),
     lastFetchedAt: lastRow?.lastSeenAt || null,
     runningJob: running
-      ? { id: running.id, total: running.total, done: running.done, succeeded: running.succeeded, failed: running.failed }
+      ? { id: running.id, total: running.total, done: running.done, succeeded: running.succeeded, failed: running.failed, lastError: running.lastError }
       : null,
   });
 }

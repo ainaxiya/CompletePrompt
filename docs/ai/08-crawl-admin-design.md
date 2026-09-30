@@ -7,18 +7,19 @@
 
 1. 后台侧边栏「采集管理」（仅拥有 `crawl:manage` 权限的管理员可见；超管自动拥有）。
 2. 选择采集源（当前仅 LibLib TV，后续在 `src/lib/crawl-sources.ts` 注册表扩展）。
-3. 点「一键获取 LIBTV 更新」：服务端拉取热门流前 3 页（60 条），按 `projectUuid` 与 `CrawlItem` 表 upsert：
+3. 点「一键获取 LIBTV 更新」：服务端拉取热门流前 3 页（60 条）→ **并发 5 逐条探测 detail，未公开提示词画布（nodes 为空 / 已删除 / 私有）的作品直接剔除，不进列表**（探测临时失败保守保留）→ 按 `projectUuid` 与 `CrawlItem` 表 upsert：
    - 新作品 → `status=new`（待采集）
    - 已入库作品远端更新时间晚于入库时间 → 计入「有更新」提示，但**不重复入库**（v0.4 不覆盖已采集内容）
-   - 返回「共 N 条 / 新发现 X / 有更新 Y」
+   - 列表中已存在的 new/failed 空画布条目同步清除（重试永不成功的死条目）
+   - 返回「共获取 N 条 / 剔除未公开画布 X / 可采集 Y / 新发现 Z / 有更新 W」
 4. 列表三个 Tab：待采集 / 已采集 / 采集失败；列：多选框、封面、标题（源站链接）、作者、标签、远端更新时间、状态。
 5. 勾选若干条 →「确认采集进库」；或「全部采集入库」（所有待采集，单次上限 100 条）。
-6. 入库是后台异步任务（`CrawlJob`），前端 1.5s 轮询进度条；完成后刷新列表，失败条目进入「采集失败」Tab 可勾选重试。
+6. 入库是后台异步任务（`CrawlJob`），前端 1.5s 轮询进度条；进度卡片若出现失败，红字只显示**最后一条**失败原因（`CrawlJob.lastError`，格式《标题》：原因）；完成后刷新列表，失败条目进入「采集失败」Tab 可勾选重试。
 
 ## 2. 数据模型（prisma/schema.prisma）
 
 - `CrawlItem`：远端作品快照。`@@unique([source, remoteId])` 去重；`status = new | collected | failed`；`promptId @unique` 关联入库的 Prompt；`remoteCreatedAt/remoteUpdatedAt` 解析自远端中文时间（"2026年09月22日 17:07"）。
-- `CrawlJob`：入库任务（source/itemIds/total/done/succeeded/failed/status/message/adminId）。运行态卡死超过 45 分钟（如 PM2 重启）会在下次发起任务时被 `reapStaleJobs()` 回收。
+- `CrawlJob`：入库任务（source/itemIds/total/done/succeeded/failed/lastError/status/message/adminId）。`lastError` 只保留最后一条失败原因供进度卡片展示。运行态卡死超过 45 分钟（如 PM2 重启）会在下次发起任务时被 `reapStaleJobs()` 回收。
 - `Prompt` 增加反向关系 `crawlItem CrawlItem?`。
 
 ## 3. 入库内容构建（src/lib/crawl-libtv.ts）

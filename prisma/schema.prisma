@@ -292,6 +292,8 @@ model CrawlJob {
   done      Int      @default(0)
   succeeded Int      @default(0)
   failed    Int      @default(0)
+  // 只保留最后一条失败原因（进度区展示用）
+  lastError String?  @db.Text
   message   String?  @db.Text
   itemIds   Int[]
   adminId   Int

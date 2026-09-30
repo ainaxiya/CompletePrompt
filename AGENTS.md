@@ -291,10 +291,17 @@ liblib 系列是采集系统雏形，未来规划改造为 Crawlee connector（�
   - **前台微调**：首页 hero `px-5 py-8 sm:px-6 sm:py-10`；详情正文卡 `p-3 sm:p-4`；评论区卡 padding/回复缩进 ml-8→sm:ml-12/操作行 flex-wrap/发送键 min-h-40；会员中心统计卡收紧、操作按钮 `flex-1 sm:flex-none`（LogoutButton 外包 `[&>button]:w-full`）；CopyButton 加 `shrink-0 whitespace-nowrap`（修标签占满行时按钮被压竖排）。
   - **后台保底**：内容区 `p-4 lg:p-7`；筛选输入 `min-w-[160px] sm:min-w-[220px]`（评论搜索手机 w-full）；UserManager/AdminManager 弹窗 `p-4 sm:p-6`，双列表单 `grid-cols-1 min-[380px]:grid-cols-2`；宽表 overflow-x-auto/导航横滑/角色弹窗均维持原样。
   - **验收方式**：playwright-core（临时目录、channel=msedge，不进项目依赖）四档视口 360/390/768/1280 逐页测 scrollWidth==clientWidth + 截图；全页截图里 fixed Tab 栏会被拼接在页面中段，属工具伪影不是 bug。
+- **v0.3（✅ 2026-09-27 已上线）**：前台零后台入口——member 页删除「后台管理」按钮与管理员徽章（两套用户体系完全隔离；唯一保留的管理员态是详情页不可见的未发布预览放行 canSee）。规则见 gotchas #93。
+- **v0.4（✅ 2026-09-27 已上线）**：后台采集管理（LibLib TV 首发）+ 后台导航重排改名。设计文档 `docs/ai/08-crawl-admin-design.md`。
+  - **采集架构**：新表 CrawlItem（`@@unique([source,remoteId])` 去重、status new/collected/failed、promptId 关联）、CrawlJob（异步任务进度）；权限点 `crawl:manage`。
+  - **源注册**：`lib/crawl-sources.ts`（目前仅 libtv）；`lib/crawl-libtv.ts` 负责 feed 流（热门前 N 页，页隔 250ms/429 退避）、detail、extractNodes、分节内容构建（`[N] 图片生成｜｜节点名`，媒体 section=N）；`lib/crawl-worker.ts` 在 Next 进程内异步入库（建 Prompt → sharp 下载封面+≤12 节点图+ffmpeg 截≤6 视频帧到 public/uploads/liblib/<id>/ → 回写 media → 双写 Meili），importer 账号 username=`libtv`。
+  - **边界/媒体**：图片≤12 张/作品，视频截帧≤6 段（ffmpeg 8.0.1 已 apt 安装，三时间点亮帧策略，详见 gotchas #97），音频节点只留文字；「全部采集」单次上限 100；同时只允许一个 running 任务（45 分钟超时 reapStaleJobs 回收）；已采集作品远端有更新只计数提示不覆盖。
+  - **v0.4 补丁（2026-09-28）**：① fetch 拉 feed 后并发探测 detail，未公开提示词画布的作品（短片/获奖作，nodes 为空、已删除 10051、私有）在获取阶段即剔除不进列表，已存在的 new/failed 死条目同步清除，探测临时失败保守保留（`filterCollectableItems`，一次 fetch 60 条约 20-40s）；② `CrawlJob.lastError` 只记录最后一条失败（《标题》：原因），进度卡片红字单行显示；③ 采集管理 UI 去掉「访问源站 ↗」。详见 gotchas #99/#100。
+  - **接口**：GET /api/admin/collect/sources、GET items、POST fetch、POST import（all 或 ids）、GET jobs/[id]；页面 `(admin)/.../collect` + components/admin/CollectManager.tsx。
+  - **导航新序**：仪表盘/网站设置/提示词管理/提示词分类/采集管理/发布设置/用户管理/注册设置/评论管理/管理员设置(超管)/权限角色/后台操作日志；侧栏底标 `FULL PROMPT v0.4`。
 - 部署第 1 期顺序：`npx prisma db push`（只加可空列/新表）→ `node scripts/migrate-admins.mjs` → `npm run build` → `pm2 restart CompletePrompt` → `pm2 start scripts/meili-sync-daemon.mjs --name CompletePrompt-MeiliSync`。
-- 另两条长期规划：
-  1. **后台集成 AI 能力**：经 llm-api.net（Key 仅放服务端 `.env`，绝不下发浏览器），新建 `/api/admin/ai/*` 服务端代理；功能：自动打标签、生成简介、中英翻译、润色。
-  2. **多站点采集系统**：技术选型 **Crawlee（TypeScript/Node）**；规划结构 `crawler/connectors/<站点>/`（liblib 现有 6 个脚本改造为第一个 connector）+ `core/pipeline.ts` 统一入库管道 + `CrawlTask` 表 + 后台采集中心。
+- 另一条长期规划：**后台集成 AI 能力**：经 llm-api.net（Key 仅放服务端 `.env`，绝不下发浏览器），新建 `/api/admin/ai/*` 服务端代理；功能：自动打标签、生成简介、中英翻译、润色。
+- 多站点采集已在 v0.4 落地首站（LIBTV），后续加站：在 crawl-sources.ts 注册 + 实现同形 feed/detail 适配；Crawlee 化暂未做（当前直连官方 API，无需浏览器渲染）。
 
 ## 17. 关键文件速查（改需求时从这里进）
 
@@ -307,6 +314,7 @@ liblib 系列是采集系统雏形，未来规划改造为 Crawlee connector（�
 | 投稿校验与发布流转 | src/app/api/prompts/route.ts |
 | 搜索/筛选/排序 | src/lib/meili.ts + src/app/(site)/search/page.tsx |
 | 权限点/角色 | src/lib/permissions.ts、rbac.ts |
+| 采集管理（LIBTV） | src/lib/crawl-sources.ts、crawl-libtv.ts、crawl-worker.ts；api/admin/collect/*；components/admin/CollectManager.tsx |
 | 正文渲染/清洗（TipTap） | src/lib/rich.ts、sanitize.server.ts、components/RichEditor.tsx、components/editor/TiptapVideo.ts |
 | 原作品链接字段 | Prompt.sourceUrl；publish/page.tsx、admin/PromptForm.tsx、api/prompts、api/admin/prompts（POST+PATCH） |
 | 上传安全 | src/app/api/upload/route.ts、api/admin/settings/upload/route.ts |

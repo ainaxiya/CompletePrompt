@@ -19,7 +19,7 @@ type CrawlItemRow = {
   promptId: number | null;
 };
 
-type JobState = { id: number; total: number; done: number; succeeded: number; failed: number; status?: string; message?: string | null };
+type JobState = { id: number; total: number; done: number; succeeded: number; failed: number; status?: string; message?: string | null; lastError?: string | null };
 
 const TABS = [
   { key: "new", label: "待采集" },
@@ -129,10 +129,15 @@ export default function CollectManager() {
         setMsg({ type: "err", text: d.error || "获取失败" });
         return;
       }
-      setMsg({
-        type: "ok",
-        text: `获取完成：共 ${d.fetched} 条，新发现 ${d.newCount} 条${d.updatedCount ? `，已采集作品中有 ${d.updatedCount} 条远端有更新（不重复入库）` : ""}`,
-      });
+      const parts = [
+        `共获取 ${d.fetched} 条`,
+        d.skippedEmpty ? `剔除未公开画布 ${d.skippedEmpty} 条` : null,
+        `可采集 ${d.collectable} 条`,
+        `新发现 ${d.newCount} 条`,
+        d.updatedCount ? `已采集作品中 ${d.updatedCount} 条远端有更新（不重复入库）` : null,
+        d.probeErrors ? `探测临时失败 ${d.probeErrors} 条（已保留，可下次再获取）` : null,
+      ].filter(Boolean);
+      setMsg({ type: "ok", text: "获取完成：" + parts.join("，") });
       await load();
     } finally {
       setFetching(false);
@@ -201,11 +206,6 @@ export default function CollectManager() {
                   </option>
                 ))}
               </select>
-              {curSource && (
-                <a href={curSource.url} target="_blank" rel="noreferrer" className="text-xs text-sky-400 hover:underline">
-                  访问源站 ↗
-                </a>
-              )}
             </div>
             <p className="mt-2 max-w-2xl text-xs leading-relaxed text-zinc-500">
               {curSource?.description || "定时从外部站点获取更新作品，勾选后采集提示词与媒体入库。"}
@@ -246,7 +246,12 @@ export default function CollectManager() {
               style={{ width: `${job.total ? Math.round((job.done / job.total) * 100) : 0}%` }}
             />
           </div>
-          {job.message && <p className="mt-2 text-xs text-amber-300/90">{job.message}</p>}
+          {job.lastError && (
+            <p className="mt-2 break-all text-xs text-rose-300/90" title={job.lastError}>
+              最近失败：{job.lastError}
+            </p>
+          )}
+          {job.message && !job.lastError && <p className="mt-2 text-xs text-amber-300/90">{job.message}</p>}
         </div>
       )}
 
