@@ -31,5 +31,4 @@ Thumbs.db
 # Meili 同步守护进程水位线
 .meili-sync-state.json
 AGENTS.md
-*.md
-AGENTS.md
+
