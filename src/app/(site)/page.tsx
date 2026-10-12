@@ -1,7 +1,7 @@
-import Link from "next/link";
-import { db } from "@/lib/db";
 import PromptCard from "@/components/PromptCard";
+import { db } from "@/lib/db";
 import { getServerLocale, translate as t } from "@/lib/i18n";
+import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
@@ -12,12 +12,14 @@ export default async function Home() {
   const locale = await getServerLocale();
 
   const prompts = await db.prompt.findMany({
-    where: { status: "published" },
+    where: {
+      status: "published",
+      featured : true,
+      },
+    
     orderBy: [
-      { featured: "desc" },
+      { updatedAt: "desc" },
       { likeCount: "desc" },
-      { viewCount: "desc" },
-      { id: "desc" },
     ],
     take: HOME_TAKE,
     select: {
