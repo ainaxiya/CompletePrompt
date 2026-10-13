@@ -1,5 +1,5 @@
-// 采集源注册表：目前仅 LibLib TV（LibTV），后续新增站点在此扩展
-export type CrawlSourceId = "libtv";
+// 采集源注册表：新增采集站在此注册
+export type CrawlSourceId = "libtv" | "jimeng";
 
 export interface CrawlSource {
   id: CrawlSourceId;
@@ -16,6 +16,14 @@ export const CRAWL_SOURCES: CrawlSource[] = [
     url: "https://www.liblib.tv/",
     description:
       "LibLib 社区 AI 创作作品流（图片/视频）。一键获取最新作品列表，勾选后采集提示词、封面与节点图片入库。",
+    enabled: true,
+  },
+  {
+    id: "jimeng",
+    name: "即梦AI",
+    url: "https://jimeng.jianying.com/",
+    description:
+      "即梦AI 创作灵感社区（图片为主）。一键获取最新作品列表，勾选后采集提示词与图片入库。",
     enabled: true,
   },
 ];

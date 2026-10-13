@@ -14,6 +14,12 @@ import {
   buildWorkPayload,
   type MediaPlanItem,
 } from "./crawl-libtv";
+import {
+  JIMENG_HEADERS,
+  buildJimengPayload,
+  type JimengFeedItem,
+  type MediaPlanItem as JimengMediaPlanItem,
+} from "./crawl-jimeng";
 
 const execFileP = promisify(execFile);
 // 生产机 apt 安装在 /usr/bin/ffmpeg；可用环境变量覆盖
@@ -21,14 +27,22 @@ const FFMPEG_BIN = process.env.FFMPEG_PATH || "ffmpeg";
 
 const UPLOAD_ROOT = path.join(process.cwd(), "public", "uploads", "liblib");
 const IMPORTER_USERNAME = "libtv";
+const JIMENG_IMPORTER_USERNAME = "jimeng";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-async function fetchRemoteBuf(url: string, retry = 3): Promise<Buffer> {
+// 根据数据源选择请求头
+function headersFor(source: string) {
+  if (source === "jimeng") return JIMENG_HEADERS;
+  return LIBTV_HEADERS;
+}
+
+async function fetchRemoteBuf(url: string, source = "libtv", retry = 3): Promise<Buffer> {
+  const h = headersFor(source);
   for (let i = 0; i < retry; i++) {
     try {
       const r = await fetch(url, {
-        headers: { "User-Agent": LIBTV_HEADERS["User-Agent"], Referer: LIBTV_HEADERS.Referer, Origin: LIBTV_HEADERS.Origin },
+        headers: { "User-Agent": h["User-Agent"], Referer: h.Referer, Origin: (h as any).Origin || h.Referer },
         signal: AbortSignal.timeout(45000),
       });
       if (!r.ok) throw new Error("HTTP " + r.status);
@@ -43,24 +57,22 @@ async function fetchRemoteBuf(url: string, retry = 3): Promise<Buffer> {
 
 const urlHash = (u: string) => crypto.createHash("sha1").update(u).digest("hex").slice(0, 16);
 
-async function ensureImporter() {
+async function ensureImporter(source: string) {
+  const username = source === "jimeng" ? JIMENG_IMPORTER_USERNAME : IMPORTER_USERNAME;
+  const nickname = source === "jimeng" ? "即梦AI 采集" : "LibTV 采集";
+  const bio = source === "jimeng" ? "即梦AI 创作灵感社区自动采集账号" : "LibLib TV 官方作品自动采集账号";
   return db.user.upsert({
-    where: { username: IMPORTER_USERNAME },
+    where: { username },
     update: {},
-    create: {
-      username: IMPORTER_USERNAME,
-      nickname: "LibTV 采集",
-      bio: "LibLib TV 官方作品自动采集账号",
-      role: "importer",
-    },
+    create: { username, nickname, bio, role: "importer" },
   });
 }
 
 // 下载并 webp 化单张图片，返回本地 URL；失败返回 false
-async function downloadImage(url: string, filePath: string): Promise<boolean> {
+async function downloadImage(url: string, filePath: string, source = "libtv"): Promise<boolean> {
   if (existsSync(filePath) && statSync(filePath).size > 0) return true;
   try {
-    const buf = await fetchRemoteBuf(url);
+    const buf = await fetchRemoteBuf(url, source);
     mkdirSync(path.dirname(filePath), { recursive: true });
     await sharp(buf, { failOn: "none" })
       .rotate()
@@ -131,17 +143,16 @@ async function screenshotVideo(url: string, outPath: string): Promise<boolean> {
   }
 }
 
-async function importOneItem(itemId: number, importerId: number, adminId: number) {
+// ─── LIBTV 单条入库 ───
+async function importLibtvItem(itemId: number, importerId: number, adminId: number) {
   const item = await db.crawlItem.findUnique({ where: { id: itemId } });
   if (!item || item.status === "collected") return { skipped: true };
   if (!item.templateUuid) throw new Error("缺少 templateUuid");
 
-  // 1) 拉详情 + 构建内容
   const detail = await fetchLibtvDetail(item.templateUuid);
   const payload = buildWorkPayload(detail);
   if (!payload.content.trim()) throw new Error("作品快照中没有可采集的节点");
 
-  // 2) 建提示词（先建后下图，目录用 prompt id）
   const sourceUrl = `https://www.liblib.tv/canvas?sourceProjectUuid=${item.remoteId}`;
   const prompt = await db.prompt.create({
     data: {
@@ -162,7 +173,6 @@ async function importOneItem(itemId: number, importerId: number, adminId: number
     },
   });
 
-  // 3) 下载封面与节点图片
   const workDir = path.join(UPLOAD_ROOT, String(prompt.id));
   const media: any[] = [];
   let coverOk = false;
@@ -184,13 +194,12 @@ async function importOneItem(itemId: number, importerId: number, adminId: number
   for (const m of payload.mediaPlan as MediaPlanItem[]) {
     const prefix = m.kind === "video" ? "frame" : "image";
     const file = path.join(workDir, `${prefix}-${urlHash(m.url)}.webp`);
-    // 视频节点走 ffmpeg 截帧；图片节点直取
     const ok = m.kind === "video" ? await screenshotVideo(m.url, file) : await downloadImage(m.url, file);
     if (!ok) continue;
     if (m.kind === "video") frameOk++;
     else imgOk++;
     media.push({
-      type: "image", // 视频节点保存的是截图，用 image 展示并以 nodeKind 标记来源
+      type: "image",
       role: "node",
       url: `/uploads/liblib/${prompt.id}/${path.basename(file)}`,
       section: m.section,
@@ -198,10 +207,9 @@ async function importOneItem(itemId: number, importerId: number, adminId: number
       sourceUrl: m.url,
       alt: m.alt,
     });
-    await sleep(80); // 温和限速
+    await sleep(80);
   }
 
-  // 4) 回写媒体并同步搜索
   await db.prompt.update({
     where: { id: prompt.id },
     data: { media, ...(coverOk ? { coverUrl: `/uploads/liblib/${prompt.id}/cover.webp` } : {}) },
@@ -224,15 +232,125 @@ async function importOneItem(itemId: number, importerId: number, adminId: number
 
   await db.crawlItem.update({
     where: { id: item.id },
-    data: {
-      status: "collected",
-      error: null,
-      kind: payload.type,
-      promptId: prompt.id,
-      collectedAt: new Date(),
-    },
+    data: { status: "collected", error: null, kind: payload.type, promptId: prompt.id, collectedAt: new Date() },
   });
   return { promptId: prompt.id, mediaCount: media.length, imgOk, frameOk, coverOk };
+}
+
+// ─── 即梦 单条入库 ───
+async function importJimengItem(itemId: number, importerId: number, adminId: number) {
+  const item = await db.crawlItem.findUnique({ where: { id: itemId } });
+  if (!item || item.status === "collected") return { skipped: true };
+
+  // 即梦数据已在 fetch 阶段存好（title/coverUrl/tags/likeCount），直接用 CrawlItem 构建
+  // 需要重新构建 JimengFeedItem 来生成内容
+  const jimengItem: JimengFeedItem = {
+    itemId: item.remoteId,
+    title: item.title,
+    coverUrl: item.coverUrl,
+    coverWidth: 0,
+    coverHeight: 0,
+    authorName: item.author || "匿名用户",
+    authorAvatar: null,
+    prompt: "", // 从 tags 中存了提示词（fetch 阶段存入）
+    modelName: "",
+    imageUrl: null,
+    imageWidth: 0,
+    imageHeight: 0,
+    likeCount: item.likeCount,
+    usageCount: 0,
+    createTime: item.remoteCreatedAt,
+    updateTime: item.remoteUpdatedAt,
+    effectType: 9,
+  };
+  // 提示词存在 tags 的第一个元素（fetch 阶段约定）
+  if (item.tags.length > 0) {
+    jimengItem.prompt = item.tags[0];
+    jimengItem.modelName = item.tags.length > 1 ? item.tags[1] : "";
+  }
+
+  const payload = buildJimengPayload(jimengItem);
+  if (!payload.content.trim()) throw new Error("作品无可采集内容");
+
+  const sourceUrl = `https://jimeng.jianying.com/ai-tool/work/${item.remoteId}`;
+  const prompt = await db.prompt.create({
+    data: {
+      userId: importerId,
+      title: item.title,
+      content: payload.content,
+      type: payload.type,
+      category: payload.category,
+      language: "zh",
+      tags: item.tags.filter((_, i) => i >= 2), // 前两个是提示词和模型名
+      sourceSite: "jimeng.jianying.com",
+      sourceAuthor: item.author,
+      sourceUrl,
+      likeCount: item.likeCount,
+      status: "published",
+      publishedAt: item.remoteCreatedAt ?? null,
+      adminAuthorId: adminId,
+    },
+  });
+
+  const workDir = path.join(UPLOAD_ROOT, String(prompt.id));
+  const media: any[] = [];
+  let coverOk = false;
+  if (payload.coverUrl) {
+    const coverPath = path.join(workDir, "cover.webp");
+    coverOk = await downloadImage(payload.coverUrl, coverPath, "jimeng");
+    if (coverOk) {
+      media.push({
+        type: "image",
+        role: "cover",
+        url: `/uploads/liblib/${prompt.id}/cover.webp`,
+        sourceUrl: payload.coverUrl,
+        alt: item.title,
+      });
+    }
+  }
+  let imgOk = 0;
+  for (const m of payload.mediaPlan as JimengMediaPlanItem[]) {
+    const file = path.join(workDir, `image-${urlHash(m.url)}.webp`);
+    const ok = await downloadImage(m.url, file, "jimeng");
+    if (!ok) continue;
+    imgOk++;
+    media.push({
+      type: "image",
+      role: "node",
+      url: `/uploads/liblib/${prompt.id}/${path.basename(file)}`,
+      section: m.section,
+      nodeKind: m.kind,
+      sourceUrl: m.url,
+      alt: m.alt,
+    });
+    await sleep(80);
+  }
+
+  await db.prompt.update({
+    where: { id: prompt.id },
+    data: { media, ...(coverOk ? { coverUrl: `/uploads/liblib/${prompt.id}/cover.webp` } : {}) },
+  });
+  await syncPromptToMeili({
+    id: prompt.id,
+    title: prompt.title,
+    content: prompt.content,
+    description: null,
+    type: prompt.type,
+    category: prompt.category,
+    language: prompt.language,
+    tags: prompt.tags,
+    likeCount: prompt.likeCount,
+    viewCount: 0,
+    createdAt: prompt.createdAt,
+    sourceAuthor: prompt.sourceAuthor,
+    coverUrl: coverOk ? `/uploads/liblib/${prompt.id}/cover.webp` : null,
+  });
+
+  await db.crawlItem.update({
+    where: { id: item.id },
+    data: { status: "collected", error: null, kind: payload.type, promptId: prompt.id, collectedAt: new Date() },
+  });
+  return { promptId: prompt.id, mediaCount: media.length, imgOk, frameOk: 0, coverOk };
 }
 
 export async function runCrawlJob(jobId: number) {
@@ -240,11 +358,12 @@ export async function runCrawlJob(jobId: number) {
   if (!job) return;
   let succeeded = 0;
   let failed = 0;
+  const importFn = job.source === "jimeng" ? importJimengItem : importLibtvItem;
   try {
-    const importer = await ensureImporter();
+    const importer = await ensureImporter(job.source);
     for (const itemId of job.itemIds) {
       try {
-        const r = await importOneItem(itemId, importer.id, job.adminId);
+        const r = await importFn(itemId, importer.id, job.adminId);
         if (!("skipped" in r)) succeeded++;
       } catch (e: any) {
         failed++;

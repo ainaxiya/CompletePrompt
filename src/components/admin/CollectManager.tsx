@@ -183,6 +183,12 @@ export default function CollectManager() {
   const pageAllSelected = selectableRows.length > 0 && selectableRows.every((r) => selected.has(r.id));
   const totalPages = Math.max(1, Math.ceil(total / 20));
 
+  // 根据数据源生成源站链接
+  const sourceUrlOf = (r: CrawlItemRow) => {
+    if (source === "jimeng") return `https://jimeng.jianying.com/ai-tool/work/${r.remoteId}`;
+    return `https://www.liblib.tv/canvas?sourceProjectUuid=${r.remoteId}`;
+  };
+
   return (
     <div className="space-y-4">
       {/* 采集源卡片 */}
@@ -351,7 +357,7 @@ export default function CollectManager() {
                   <td className="max-w-[320px] px-3 py-2.5">
                     <div className="flex items-center gap-2">
                       <a
-                        href={`https://www.liblib.tv/canvas?sourceProjectUuid=${r.remoteId}`}
+                        href={sourceUrlOf(r)}
                         target="_blank"
                         rel="noreferrer"
                         className="truncate text-zinc-100 hover:text-sky-400 hover:underline"

@@ -12,7 +12,7 @@ const MAX_JOB_ITEMS = 100;
 
 const schema = z
   .object({
-    source: z.literal("libtv"),
+    source: z.enum(["libtv", "jimeng"]),
     // all=true=全部待采集入库；否则按 ids 勾选入库（可含 failed 重试）
     all: z.boolean().optional(),
     ids: z.array(z.number().int().positive()).max(MAX_JOB_ITEMS).optional(),
