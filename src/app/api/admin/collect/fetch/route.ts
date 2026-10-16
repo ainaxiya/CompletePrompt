@@ -21,11 +21,14 @@ function libtvTags(it: LibtvFeedItem): string[] {
     .map((s) => s.slice(0, 30));
 }
 
-// 即梦 tags：第 0 个存提示词，第 1 个存模型名，后续为实际标签（入库时前两个会被剥离）
+// 即梦 tags 约定（入库时前 4 个会被剥离）：
+//   [0] 提示词  [1] 模型名  [2] 作品形态 image|video  [3] 视频地址（仅视频作品，短时效签名）
 function jimengTags(it: JimengFeedItem): string[] {
   const tags: string[] = [];
   if (it.prompt) tags.push(it.prompt.slice(0, 500));
   if (it.modelName) tags.push(it.modelName.slice(0, 50));
+  tags.push(it.workType);
+  if (it.videoUrl) tags.push(it.videoUrl.slice(0, 2000));
   return tags;
 }
 
@@ -174,7 +177,7 @@ async function handleJimengFetch(adminId: number, source: string, pages: number)
     const tags = jimengTags(it);
     const remoteCreatedAt = it.createTime;
     const remoteUpdatedAt = it.updateTime;
-    const title = it.title || "即梦AI作品";
+    const title = it.title || (it.workType === "video" ? "即梦AI视频作品" : "即梦AI作品");
     const ex = exMap.get(it.itemId);
     if (!ex) {
       await db.crawlItem.create({

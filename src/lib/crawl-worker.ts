@@ -87,10 +87,11 @@ async function downloadImage(url: string, filePath: string, source = "libtv"): P
 
 // 远程视频截帧：多个时间点尝试（规避片头黑场淡入），取平均亮度最高的一帧，webp 化
 // 移植自 scripts/liblib-import-media.mjs（ffmpeg 走 PATH，-referer 带防盗链）
-async function screenshotVideo(url: string, outPath: string): Promise<boolean> {
+async function screenshotVideo(url: string, outPath: string, source = "libtv"): Promise<boolean> {
   if (existsSync(outPath) && statSync(outPath).size > 0) return true;
   mkdirSync(path.dirname(outPath), { recursive: true });
   const tmp = outPath.replace(/\.webp$/, ".tmp.jpg");
+  const h = headersFor(source);
   const tries = ["1", "3", "0.5"];
   let best: { mean: number; buf: Buffer } | null = null;
   for (const ss of tries) {
@@ -105,9 +106,9 @@ async function screenshotVideo(url: string, outPath: string): Promise<boolean> {
           "-ss",
           ss,
           "-referer",
-          LIBTV_HEADERS.Referer,
+          h.Referer,
           "-user_agent",
-          LIBTV_HEADERS["User-Agent"],
+          h["User-Agent"],
           "-i",
           url,
           "-frames:v",
@@ -243,7 +244,9 @@ async function importJimengItem(itemId: number, importerId: number, adminId: num
   if (!item || item.status === "collected") return { skipped: true };
 
   // 即梦数据已在 fetch 阶段存好（title/coverUrl/tags/likeCount），直接用 CrawlItem 构建
-  // 需要重新构建 JimengFeedItem 来生成内容
+  // tags 约定：[0] 提示词  [1] 模型名  [2] 作品形态 image|video  [3] 视频地址（仅视频）
+  const tags = item.tags;
+  const workType: "image" | "video" = tags[2] === "video" ? "video" : "image";
   const jimengItem: JimengFeedItem = {
     itemId: item.remoteId,
     title: item.title,
@@ -252,22 +255,20 @@ async function importJimengItem(itemId: number, importerId: number, adminId: num
     coverHeight: 0,
     authorName: item.author || "匿名用户",
     authorAvatar: null,
-    prompt: "", // 从 tags 中存了提示词（fetch 阶段存入）
-    modelName: "",
+    prompt: tags[0] || "",
+    modelName: tags[1] || "",
     imageUrl: null,
     imageWidth: 0,
     imageHeight: 0,
+    workType,
+    videoUrl: workType === "video" ? tags[3] || null : null,
+    videoDurationMs: 0,
     likeCount: item.likeCount,
     usageCount: 0,
     createTime: item.remoteCreatedAt,
     updateTime: item.remoteUpdatedAt,
-    effectType: 9,
+    effectType: workType === "video" ? 53 : 9,
   };
-  // 提示词存在 tags 的第一个元素（fetch 阶段约定）
-  if (item.tags.length > 0) {
-    jimengItem.prompt = item.tags[0];
-    jimengItem.modelName = item.tags.length > 1 ? item.tags[1] : "";
-  }
 
   const payload = buildJimengPayload(jimengItem);
   if (!payload.content.trim()) throw new Error("作品无可采集内容");
@@ -281,7 +282,7 @@ async function importJimengItem(itemId: number, importerId: number, adminId: num
       type: payload.type,
       category: payload.category,
       language: "zh",
-      tags: item.tags.filter((_, i) => i >= 2), // 前两个是提示词和模型名
+      tags: item.tags.filter((_, i) => i >= 4), // 前 4 个是提示词/模型名/形态/视频地址
       sourceSite: "jimeng.jianying.com",
       sourceAuthor: item.author,
       sourceUrl,
@@ -309,11 +310,14 @@ async function importJimengItem(itemId: number, importerId: number, adminId: num
     }
   }
   let imgOk = 0;
+  let frameOk = 0;
   for (const m of payload.mediaPlan as JimengMediaPlanItem[]) {
-    const file = path.join(workDir, `image-${urlHash(m.url)}.webp`);
-    const ok = await downloadImage(m.url, file, "jimeng");
+    const prefix = m.kind === "video" ? "frame" : "image";
+    const file = path.join(workDir, `${prefix}-${urlHash(m.url)}.webp`);
+    const ok = m.kind === "video" ? await screenshotVideo(m.url, file, "jimeng") : await downloadImage(m.url, file, "jimeng");
     if (!ok) continue;
-    imgOk++;
+    if (m.kind === "video") frameOk++;
+    else imgOk++;
     media.push({
       type: "image",
       role: "node",
@@ -350,7 +354,7 @@ async function importJimengItem(itemId: number, importerId: number, adminId: num
     where: { id: item.id },
     data: { status: "collected", error: null, kind: payload.type, promptId: prompt.id, collectedAt: new Date() },
   });
-  return { promptId: prompt.id, mediaCount: media.length, imgOk, frameOk: 0, coverOk };
+  return { promptId: prompt.id, mediaCount: media.length, imgOk, frameOk, coverOk };
 }
 
 export async function runCrawlJob(jobId: number) {

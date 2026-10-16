@@ -1,5 +1,5 @@
 // 即梦AI (jimeng.jianying.com) 采集核心：feed 拉取 / 作品解析 / 内容与媒体计划构建
-// 即梦作品为单图单提示词（非多节点画布），API 通过 JSONP 公开访问
+// 即梦作品为单作品单提示词（图片/视频两种形态），API 通过 JSONP 公开访问
 
 export const JIMENG_HEADERS = {
   "User-Agent":
@@ -24,14 +24,17 @@ export interface JimengFeedItem {
   authorAvatar: string | null;
   prompt: string; // AI 提示词
   modelName: string; // 模型名称
-  imageUrl: string | null; // 大图 URL
+  imageUrl: string | null; // 大图 URL（图片作品）
   imageWidth: number;
   imageHeight: number;
+  workType: "image" | "video"; // 作品形态：图片 / 视频
+  videoUrl: string | null; // 视频播放地址（仅视频作品，带短时效签名）
+  videoDurationMs: number; // 视频时长（毫秒，仅视频作品）
   likeCount: number;
   usageCount: number;
   createTime: Date | null;
   updateTime: Date | null;
-  effectType: number; // 9=图片
+  effectType: number; // 9=图片, 53=视频
 }
 
 // 解析 JSONP 响应中的 JSON 数据
@@ -47,8 +50,28 @@ function parseItem(raw: any): JimengFeedItem | null {
   const attr = raw?.common_attr;
   if (!attr?.id) return null;
 
+  const effectType = Number(attr.effect_type) || 9;
+  const isVideo = effectType === 53 && !!raw?.video;
+
+  // 图片作品：提示词在 text2image_params；视频作品：提示词在 text2video_params.video_gen_inputs.prompt
   const t2i = raw?.aigc_image_params?.text2image_params;
+  const t2v = raw?.aigc_image_params?.text2video_params;
   const largeImg = raw?.image?.large_images;
+  const videoInfo = raw?.video;
+
+  let prompt = "";
+  let modelName = "";
+  if (isVideo) {
+    prompt = t2v?.video_gen_inputs?.prompt ? String(t2v.video_gen_inputs.prompt).trim() : "";
+    modelName = t2v?.model_config?.model_name ? String(t2v.model_config.model_name) : "";
+  } else {
+    prompt = t2i?.prompt ? String(t2i.prompt).trim() : "";
+    modelName = t2i?.model_config?.model_name ? String(t2i.model_config.model_name) : "";
+  }
+
+  // 视频地址：transcoded_video.origin.video_url（短时效签名，入库时可能已过期，仅用于截帧）
+  const videoUrl = isVideo ? videoInfo?.transcoded_video?.origin?.video_url || null : null;
+  const videoDurationMs = isVideo ? Number(videoInfo?.duration_ms) || 0 : 0;
 
   return {
     itemId: String(attr.id),
@@ -58,16 +81,19 @@ function parseItem(raw: any): JimengFeedItem | null {
     coverHeight: Number(attr.cover_height) || 0,
     authorName: raw?.author?.name ? String(raw.author.name).slice(0, 80) : "匿名用户",
     authorAvatar: raw?.author?.avatar_url || null,
-    prompt: t2i?.prompt ? String(t2i.prompt).trim() : "",
-    modelName: t2i?.model_config?.model_name ? String(t2i.model_config.model_name) : "",
+    prompt,
+    modelName,
     imageUrl: largeImg?.image_url || null,
     imageWidth: Number(largeImg?.width) || 0,
     imageHeight: Number(largeImg?.height) || 0,
+    workType: isVideo ? "video" : "image",
+    videoUrl,
+    videoDurationMs,
     likeCount: Number(raw?.statistic?.favorite_num) || 0,
     usageCount: Number(raw?.statistic?.usage_num) || 0,
     createTime: attr.create_time ? new Date(Number(attr.create_time) * 1000) : null,
     updateTime: attr.update_time ? new Date(Number(attr.update_time) * 1000) : null,
-    effectType: Number(attr.effect_type) || 9,
+    effectType,
   };
 }
 
@@ -153,7 +179,11 @@ export async function fetchJimengFeed(
 export type ProbeVerdict = "ok" | "empty" | "error";
 export function probeJimengItem(item: JimengFeedItem): { verdict: ProbeVerdict; message?: string } {
   if (!item.prompt.trim()) return { verdict: "empty", message: "作品无提示词" };
-  if (!item.coverUrl && !item.imageUrl) return { verdict: "empty", message: "作品无图片" };
+  if (item.workType === "video") {
+    if (!item.coverUrl && !item.videoUrl) return { verdict: "empty", message: "视频作品无封面/视频地址" };
+  } else {
+    if (!item.coverUrl && !item.imageUrl) return { verdict: "empty", message: "作品无图片" };
+  }
   return { verdict: "ok" };
 }
 
@@ -195,27 +225,38 @@ export interface WorkPayload {
 }
 
 export function buildJimengPayload(item: JimengFeedItem): WorkPayload {
-  // 即梦作品 = 单图单提示词
+  // 即梦作品 = 单作品单提示词（图片 / 视频）
+  const isVideo = item.workType === "video";
   const lines: string[] = [];
   const title = item.title || "即梦AI作品";
-  lines.push(`[1] 图片生成｜｜${title}`);
+  lines.push(`[1] ${isVideo ? "视频生成" : "图片生成"}｜｜${title}`);
   if (item.prompt) lines.push(`中文提示词：\n${item.prompt}`);
   if (item.modelName) lines.push(`模型：${item.modelName}`);
 
   const mediaPlan: MediaPlanItem[] = [];
-  // 大图（优先）或封面
-  const imgSrc = item.imageUrl || item.coverUrl;
-  if (imgSrc) {
-    mediaPlan.push({ section: 1, kind: "image", url: imgSrc, final: true, alt: title });
+  if (isVideo) {
+    // 视频作品：视频地址（截帧用，短时效签名） + 封面首帧图
+    if (item.videoUrl) {
+      mediaPlan.push({ section: 1, kind: "video", url: item.videoUrl, final: true, alt: title });
+    }
+    if (item.coverUrl) {
+      mediaPlan.push({ section: 1, kind: "image", url: item.coverUrl, final: false, alt: `${title} 首帧` });
+    }
+  } else {
+    // 图片作品：大图（优先）或封面
+    const imgSrc = item.imageUrl || item.coverUrl;
+    if (imgSrc) {
+      mediaPlan.push({ section: 1, kind: "image", url: imgSrc, final: true, alt: title });
+    }
   }
 
   return {
     content: lines.join("\n\n"),
-    type: "image",
-    category: "图片创作",
+    type: isVideo ? "video" : "image",
+    category: isVideo ? "视频创作" : "图片创作",
     coverUrl: item.coverUrl,
     mediaPlan,
-    imageNodeCount: 1,
-    videoNodeCount: 0,
+    imageNodeCount: isVideo ? 0 : 1,
+    videoNodeCount: isVideo ? 1 : 0,
   };
 }

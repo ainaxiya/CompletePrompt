@@ -41,15 +41,21 @@
 
 ### 3b. 即梦AI（src/lib/crawl-jimeng.ts）
 
-即梦作品为**单图单提示词**（非多节点画布），API 通过 JSONP 公开访问：
+即梦作品为**单作品单提示词**（图片 / 视频两种形态），API 通过 JSONP 公开访问：
 
 - **Feed API**：`GET /jsonp/mweb/v1/get_explore?category_id=11222&offset=0&count=20&image_info=...&feed_refer=feed_enterauto&filter=...&_callback=crawl`，响应包裹在 `window["__get_explore_result"] = {...}` JSONP 中。
 - 分页用 `offset`（非 page），每页 20 条，页间隔 300ms。
-- 每个作品生成一个正文分节：`[1] 图片生成｜｜<标题>` + `中文提示词：…` + `模型：<模型名>`。
-- 分类固定 `图片创作`，类型固定 `image`。
-- 媒体：封面 + 大图（large_images.image_url），sharp webp 化到 `public/uploads/liblib/<promptId>/`（与 LIBTV 共用目录）。
+- **图片作品**（effect_type=9）：提示词在 `aigc_image_params.text2image_params.prompt`，模型在 `text2image_params.model_config.model_name`，大图在 `image.large_images.image_url`。
+- **视频作品**（effect_type=53）：提示词在 `aigc_image_params.text2video_params.video_gen_inputs.prompt`，模型在 `text2video_params.model_config.model_name`（Seedance 系列），视频地址在 `video.transcoded_video.origin.video_url`（短时效签名，约 1 小时过期）。
+- 每个作品生成一个正文分节：`[1] 图片生成｜｜<标题>` 或 `[1] 视频生成｜｜<标题>` + `中文提示词：…` + `模型：<模型名>`。
+- 分类：图片→`图片创作`，视频→`视频创作`；类型：图片→`image`，视频→`video`。
+- 媒体：
+  - 图片作品：封面 + 大图，sharp webp 化到 `public/uploads/liblib/<promptId>/`。
+  - 视频作品：封面（首帧图）+ ffmpeg 截帧（多时间点取最亮帧，与 LIBTV 同策略）。
 - **图片 URL 带签名过期**（x-expires），采集入库后存本地路径不受影响。
-- Prompt 字段：`sourceSite="jimeng.jianying.com"`、`sourceUrl="https://jimeng.jianying.com/ai-tool/work/<itemId>"`、`sourceAuthor`、tags（剥离提示词和模型名后的实际标签）、likeCount、language=zh、status=published、adminAuthorId=操作管理员、userId=专用 importer 账号 `jimeng`（role=importer，自动 upsert）。
+- **视频 URL 短时效签名**（约 1 小时），入库任务中若已过期则跳过截帧，仅用封面。
+- **tags 约定**：`[0]=提示词 [1]=模型名 [2]=作品形态(image|video) [3]=视频地址(仅视频)`，入库时前 4 个剥离。
+- Prompt 字段：`sourceSite="jimeng.jianying.com"`、`sourceUrl="https://jimeng.jianying.com/ai-tool/work/<itemId>"`、`sourceAuthor`、tags（剥离前 4 个后的实际标签）、likeCount、language=zh、status=published、adminAuthorId=操作管理员、userId=专用 importer 账号 `jimeng`（role=importer，自动 upsert）。
 - 入库后双写 Meilisearch（`syncPromptToMeili`），立即可搜。
 
 ## 4. 接口（全部挂 PERMISSIONS.CRAWL_MANAGE）
@@ -91,3 +97,4 @@ export type CrawlSourceId = "libtv" | "jimeng";
 - LIBTV 远端接口无鉴权但有频控：feed 页间隔 250ms、429 退避；单图下载间隔 80ms。
 - 即梦远端接口通过 JSONP 公开访问：feed 页间隔 300ms、429 退避；单图下载间隔 80ms。
 - 即梦图片 URL 带签名过期（x-expires），采集后存本地不受影响；但 CrawlItem.coverUrl 中的远端 URL 过期后封面将无法在列表中显示（TODO: 后续可考虑 fetch 时同步下载封面到本地缓存）。
+- 即梦视频 URL 短时效签名（约 1 小时），入库时若已过期则跳过截帧仅用封面；后续如需完整视频截帧，需在 fetch 阶段同步下载视频或缩短 fetch→import 间隔。
