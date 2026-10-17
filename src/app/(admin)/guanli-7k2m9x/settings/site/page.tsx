@@ -16,6 +16,9 @@ const DEFAULT_SITE = {
   logoIcon: "",
   favicon: "",
   appIcon: "",
+  bannerPc: "",
+  bannerMobile: "",
+  friendLinks: "",
   meiliSyncSeconds: 30,
 };
 

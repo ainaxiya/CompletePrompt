@@ -17,6 +17,14 @@ const TYPE_LABELS: Record<string, string> = {
   audio: "文生音频",
 };
 
+// ISO 时间 → datetime-local 控件格式（按浏览器本地时区）
+function toLocalInput(s: string): string {
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 export default function PromptForm({ promptId }: { promptId?: number }) {
   const isEdit = !!promptId;
   const router = useRouter();
@@ -35,6 +43,10 @@ export default function PromptForm({ promptId }: { promptId?: number }) {
     type: "text",
     category: "",
     model: "",
+    language: "zh",
+    promptCode: "",
+    sourceSite: "",
+    sourceAuthor: "",
     sourceUrl: "",
     coverUrl: "" as string | null,
     content: "",
@@ -42,7 +54,15 @@ export default function PromptForm({ promptId }: { promptId?: number }) {
     tagsText: "",
     status: "published",
     featured: false,
+    hot: false,
     commentsClosed: false,
+    rejectReason: "",
+    publishedAt: "", // datetime-local 格式，空=未发布
+    likeCount: 0,
+    favoriteCount: 0,
+    viewCount: 0,
+    commentCount: 0,
+    mediaText: "", // 媒体 JSON（数组），空=不修改
   });
 
   useEffect(() => {
@@ -69,6 +89,10 @@ export default function PromptForm({ promptId }: { promptId?: number }) {
             type: d.type || "text",
             category: d.category || "",
             model: d.model || "",
+            language: d.language || "zh",
+            promptCode: d.promptCode || "",
+            sourceSite: d.sourceSite || "",
+            sourceAuthor: d.sourceAuthor || "",
             sourceUrl: d.sourceUrl || "",
             coverUrl: d.coverUrl || null,
             content: d.content || "",
@@ -76,7 +100,15 @@ export default function PromptForm({ promptId }: { promptId?: number }) {
             tagsText: (d.tags || []).join(", "),
             status: d.status || "published",
             featured: !!d.featured,
+            hot: !!d.hot,
             commentsClosed: !!d.commentsClosed,
+            rejectReason: d.rejectReason || "",
+            publishedAt: d.publishedAt ? toLocalInput(d.publishedAt) : "",
+            likeCount: d.likeCount ?? 0,
+            favoriteCount: d.favoriteCount ?? 0,
+            viewCount: d.viewCount ?? 0,
+            commentCount: d.commentCount ?? 0,
+            mediaText: Array.isArray(d.media) && d.media.length ? JSON.stringify(d.media, null, 2) : "",
           });
           // 已有简介的旧数据不做静默覆盖
           if (d.description) {
@@ -165,13 +197,30 @@ export default function PromptForm({ promptId }: { promptId?: number }) {
       setMsg({ kind: "err", text: "标题和内容必填" });
       return;
     }
+    // 媒体 JSON 校验（留空=不修改）
+    let media: unknown[] | undefined;
+    if (f.mediaText.trim()) {
+      try {
+        const parsed = JSON.parse(f.mediaText);
+        if (!Array.isArray(parsed)) throw new Error("必须是数组");
+        media = parsed;
+      } catch {
+        setMsg({ kind: "err", text: "媒体 JSON 格式不正确（需为 JSON 数组）" });
+        return;
+      }
+    }
     setSaving(true);
     setMsg(null);
+    const num = (v: number | string) => Math.max(0, Math.floor(Number(v) || 0));
     const payload: Record<string, unknown> = {
       title: f.title.trim(),
       type: f.type,
       category: f.category,
       model: f.model.trim() || null,
+      language: f.language,
+      promptCode: f.promptCode.trim() || null,
+      sourceSite: f.sourceSite.trim() || null,
+      sourceAuthor: f.sourceAuthor.trim() || null,
       sourceUrl: f.sourceUrl.trim(),
       coverUrl: f.coverUrl || null,
       content: f.content,
@@ -179,9 +228,16 @@ export default function PromptForm({ promptId }: { promptId?: number }) {
       tags: f.tagsText.split(/[,，]/).map((s) => s.trim()).filter(Boolean).slice(0, 8),
       status: extra?.status || f.status,
       featured: extra?.featured ?? f.featured,
+      hot: f.hot,
       commentsClosed: f.commentsClosed,
+      rejectReason: extra?.rejectReason !== undefined ? extra.rejectReason : f.rejectReason.trim() || null,
+      publishedAt: f.publishedAt ? new Date(f.publishedAt).toISOString() : null,
+      likeCount: num(f.likeCount),
+      favoriteCount: num(f.favoriteCount),
+      viewCount: num(f.viewCount),
+      commentCount: num(f.commentCount),
+      ...(media ? { media } : {}),
     };
-    if (extra?.rejectReason !== undefined) payload.rejectReason = extra.rejectReason;
     try {
       const url = isEdit ? `/api/admin/prompts/${promptId}` : "/api/admin/prompts";
       const r = await fetch(url, {
@@ -319,21 +375,20 @@ export default function PromptForm({ promptId }: { promptId?: number }) {
       />
 
       <div className="mb-5 flex flex-wrap items-center gap-4">
-        {!isEdit && (
-          <label className="flex items-center gap-2 text-sm text-zinc-400">
-            状态
-            <OptionDropdown
-              value={f.status}
-              size="md"
-              onChange={(v) => set("status", v)}
-              options={[
-                { value: "published", label: "直接发布", tone: "green" },
-                { value: "pending", label: "待审核", tone: "amber" },
-                { value: "draft", label: "草稿", tone: "zinc" },
-              ]}
-            />
-          </label>
-        )}
+        <label className="flex items-center gap-2 text-sm text-zinc-400">
+          状态
+          <OptionDropdown
+            value={f.status}
+            size="md"
+            onChange={(v) => set("status", v)}
+            options={[
+              { value: "published", label: "已发布", tone: "green" },
+              { value: "pending", label: "待审核", tone: "amber" },
+              { value: "draft", label: "草稿", tone: "zinc" },
+              ...(isEdit ? [{ value: "rejected", label: "已驳回", tone: "red" as const }] : []),
+            ]}
+          />
+        </label>
         <label className="flex items-center gap-2 text-sm text-zinc-400">
           <input
             type="checkbox"
@@ -346,6 +401,15 @@ export default function PromptForm({ promptId }: { promptId?: number }) {
         <label className="flex items-center gap-2 text-sm text-zinc-400">
           <input
             type="checkbox"
+            checked={f.hot}
+            onChange={(e) => set("hot", e.target.checked)}
+            className="h-4 w-4 accent-orange-500"
+          />
+          热门 🔥
+        </label>
+        <label className="flex items-center gap-2 text-sm text-zinc-400">
+          <input
+            type="checkbox"
             checked={f.commentsClosed}
             onChange={(e) => set("commentsClosed", e.target.checked)}
             className="h-4 w-4 accent-rose-500"
@@ -353,6 +417,118 @@ export default function PromptForm({ promptId }: { promptId?: number }) {
           关闭本文评论（旧评论保留显示）
         </label>
       </div>
+
+      {/* 高级字段：统计 / 来源 / 发布时间 / 媒体 JSON */}
+      <details className="mb-5 rounded-lg border border-zinc-800 bg-zinc-900/40">
+        <summary className="cursor-pointer select-none px-3 py-2.5 text-sm text-zinc-400 hover:text-zinc-200">
+          高级字段（浏览量 / 点赞 / 收藏 / 评论数 / 来源 / 发布时间 / 媒体 JSON）
+        </summary>
+        <div className="space-y-3 border-t border-zinc-800 p-3">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div>
+              <label className={labelCls}>浏览量</label>
+              <input
+                type="number"
+                min={0}
+                value={f.viewCount}
+                onChange={(e) => set("viewCount", Number(e.target.value) || 0)}
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <label className={labelCls}>点赞数</label>
+              <input
+                type="number"
+                min={0}
+                value={f.likeCount}
+                onChange={(e) => set("likeCount", Number(e.target.value) || 0)}
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <label className={labelCls}>收藏数</label>
+              <input
+                type="number"
+                min={0}
+                value={f.favoriteCount}
+                onChange={(e) => set("favoriteCount", Number(e.target.value) || 0)}
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <label className={labelCls}>评论数</label>
+              <input
+                type="number"
+                min={0}
+                value={f.commentCount}
+                onChange={(e) => set("commentCount", Number(e.target.value) || 0)}
+                className={inputCls}
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={labelCls}>来源站点</label>
+              <input
+                value={f.sourceSite}
+                onChange={(e) => set("sourceSite", e.target.value)}
+                placeholder="如 jimeng.jianying.com"
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <label className={labelCls}>来源作者</label>
+              <input
+                value={f.sourceAuthor}
+                onChange={(e) => set("sourceAuthor", e.target.value)}
+                placeholder="原作者昵称"
+                className={inputCls}
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={labelCls}>语言</label>
+              <select value={f.language} onChange={(e) => set("language", e.target.value)} className={inputCls}>
+                <option value="zh">简体中文</option>
+                <option value="en">English</option>
+              </select>
+            </div>
+            <div>
+              <label className={labelCls}>发布时间</label>
+              <input
+                type="datetime-local"
+                value={f.publishedAt}
+                onChange={(e) => set("publishedAt", e.target.value)}
+                className={inputCls}
+              />
+            </div>
+          </div>
+          <div>
+            <label className={labelCls}>驳回原因</label>
+            <input value={f.rejectReason} onChange={(e) => set("rejectReason", e.target.value)} className={inputCls} />
+          </div>
+          <div>
+            <label className={labelCls}>提示词代码 promptCode（可选）</label>
+            <textarea
+              value={f.promptCode}
+              onChange={(e) => set("promptCode", e.target.value)}
+              rows={3}
+              className={inputCls}
+            />
+          </div>
+          <div>
+            <label className={labelCls}>媒体 JSON（数组，留空不修改；元素形如 {"{type:'image', url:'/uploads/…'}"}）</label>
+            <textarea
+              value={f.mediaText}
+              onChange={(e) => set("mediaText", e.target.value)}
+              rows={6}
+              spellCheck={false}
+              className={`${inputCls} font-mono text-xs`}
+            />
+          </div>
+        </div>
+      </details>
 
       <div className="flex flex-wrap gap-2">
         <button

@@ -7,8 +7,8 @@ import path from "path";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-// 允许上传的文件名（固定白名单，防止任意文件覆盖）
-const ALLOWED_FILES: Record<string, { exts: string[]; magic: number[][] }> = {
+// 允许上传的文件名（固定白名单，防止任意文件覆盖）；maxMB 缺省 2MB
+const ALLOWED_FILES: Record<string, { exts: string[]; magic: number[][]; maxMB?: number }> = {
   "logo-icon-120.png": {
     exts: ["image/png", "image/webp"],
     magic: [[0x89, 0x50, 0x4e, 0x47], [0x52, 0x49, 0x46, 0x46]], // PNG / WebP(RIFF)
@@ -20,6 +20,17 @@ const ALLOWED_FILES: Record<string, { exts: string[]; magic: number[][] }> = {
   "app-icon.png": {
     exts: ["image/png", "image/webp"],
     magic: [[0x89, 0x50, 0x4e, 0x47], [0x52, 0x49, 0x46, 0x46]],
+  },
+  // 首页 banner（PC 横版 / 手机竖版）
+  "home-banner-pc.webp": {
+    exts: ["image/webp", "image/png"],
+    magic: [[0x52, 0x49, 0x46, 0x46], [0x89, 0x50, 0x4e, 0x47]], // WebP(RIFF) / PNG
+    maxMB: 8,
+  },
+  "home-banner-mobile.webp": {
+    exts: ["image/webp", "image/png"],
+    magic: [[0x52, 0x49, 0x46, 0x46], [0x89, 0x50, 0x4e, 0x47]],
+    maxMB: 8,
   },
 };
 
@@ -61,8 +72,9 @@ export async function POST(req: NextRequest) {
     }
 
     if (file.size === 0) return jsonError("文件为空");
-    if (file.size > 2 * 1024 * 1024) {
-      return jsonError("文件大小不能超过 2MB");
+    const maxBytes = (conf.maxMB ?? 2) * 1024 * 1024;
+    if (file.size > maxBytes) {
+      return jsonError(`文件大小不能超过 ${conf.maxMB ?? 2}MB`);
     }
 
     if (!conf.exts.includes(file.type)) {

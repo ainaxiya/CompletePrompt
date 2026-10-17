@@ -244,9 +244,35 @@ async function importJimengItem(itemId: number, importerId: number, adminId: num
   if (!item || item.status === "collected") return { skipped: true };
 
   // 即梦数据已在 fetch 阶段存好（title/coverUrl/tags/likeCount），直接用 CrawlItem 构建
-  // tags 约定：[0] 提示词  [1] 模型名  [2] 作品形态 image|video  [3] 视频地址（仅视频）
-  const tags = item.tags;
-  const workType: "image" | "video" = tags[2] === "video" ? "video" : "image";
+  // tags 约定（新）：tags[0] 为 "__meta__" 前缀 JSON（p=提示词 m=模型名 w=形态 v=视频地址 i=大图地址），其余为真实标签
+  // 兼容旧格式：[0] 提示词  [1] 模型名  [2] 形态  [3] 视频地址
+  const META_PREFIX = "__meta__";
+  let meta: { p?: string; m?: string; w?: string; v?: string; i?: string } = {};
+  const realTags: string[] = [];
+  for (const t of item.tags) {
+    if (t.startsWith(META_PREFIX)) {
+      try {
+        meta = JSON.parse(t.slice(META_PREFIX.length));
+      } catch {
+        /* 忽略损坏的 meta */
+      }
+    } else {
+      realTags.push(t);
+    }
+  }
+  const isOldFormat = !item.tags.some((t) => t.startsWith(META_PREFIX));
+  const promptText = isOldFormat ? item.tags[0] || "" : meta.p || "";
+  const modelName = isOldFormat ? item.tags[1] || "" : meta.m || "";
+  const workType: "image" | "video" = isOldFormat
+    ? item.tags[2] === "video"
+      ? "video"
+      : "image"
+    : meta.w === "video"
+      ? "video"
+      : "image";
+  const videoUrl = workType === "video" ? (isOldFormat ? item.tags[3] || null : meta.v || null) : null;
+  const finalTags = isOldFormat ? item.tags.filter((_, i) => i >= 4) : realTags;
+
   const jimengItem: JimengFeedItem = {
     itemId: item.remoteId,
     title: item.title,
@@ -255,13 +281,13 @@ async function importJimengItem(itemId: number, importerId: number, adminId: num
     coverHeight: 0,
     authorName: item.author || "匿名用户",
     authorAvatar: null,
-    prompt: tags[0] || "",
-    modelName: tags[1] || "",
-    imageUrl: null,
+    prompt: promptText,
+    modelName,
+    imageUrl: (!isOldFormat && meta.i) || null,
     imageWidth: 0,
     imageHeight: 0,
     workType,
-    videoUrl: workType === "video" ? tags[3] || null : null,
+    videoUrl,
     videoDurationMs: 0,
     likeCount: item.likeCount,
     usageCount: 0,
@@ -282,7 +308,7 @@ async function importJimengItem(itemId: number, importerId: number, adminId: num
       type: payload.type,
       category: payload.category,
       language: "zh",
-      tags: item.tags.filter((_, i) => i >= 4), // 前 4 个是提示词/模型名/形态/视频地址
+      tags: finalTags,
       sourceSite: "jimeng.jianying.com",
       sourceAuthor: item.author,
       sourceUrl,

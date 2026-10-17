@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ADMIN_BASE } from "@/lib/admin-path";
+import Pagination from "@/components/Pagination";
+import { getCategoryMeta } from "@/lib/category-meta";
 
 type Row = {
   id: number;
@@ -29,13 +31,19 @@ const STATUS_TABS = [
   { k: "published", l: "已发布" },
   { k: "rejected", l: "已驳回" },
 ];
-const CATS = ["视频创作", "音频创作", "图片创作", "编程开发", "游戏设计", "网站开发", "办公写作", "网络安全", "科学物理", "金融理财", "AI智能体"];
 
 const TYPE_LABELS: Record<string, string> = {
   text: "文本创作",
   image: "文生图",
   video: "文生视频",
   audio: "文生音频",
+};
+
+// ISO 时间 → 浏览器本地时区显示（与操作日志一致）
+const fmtTime = (s: string) => {
+  const d = new Date(s);
+  if (isNaN(d.getTime())) return s;
+  return d.toLocaleString("zh-CN", { hour12: false });
 };
 
 export default function PromptManager({
@@ -55,7 +63,7 @@ export default function PromptManager({
   const [rows, setRows] = useState<Row[]>([]);
   const [total, setTotal] = useState(0);
   const [counts, setCounts] = useState<Record<string, number>>({});
-  const [cats, setCats] = useState<{ slug: string; name: string }[]>(CATS.map((c) => ({ slug: c, name: c })));
+  const [cats, setCats] = useState<{ slug: string; name: string }[]>([]);
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<Set<number>>(new Set());
 
@@ -303,7 +311,7 @@ export default function PromptManager({
                   )}
                 </td>
                 <td className="px-3 py-2.5 text-xs text-zinc-400">
-                  {p.category}
+                  {getCategoryMeta(p.category).name.zh}
                   <br />
                   {TYPE_LABELS[p.type] || p.type}
                 </td>
@@ -331,9 +339,9 @@ export default function PromptManager({
                 </td>
                 <td className="px-3 py-2.5 text-xs text-zinc-500">
                   {p.publishedAt && (
-                    <p>发布：{p.publishedAt.slice(0, 16).replace("T", " ")}</p>
+                    <p>发布：{fmtTime(p.publishedAt)}</p>
                   )}
-                  <p>更新：{p.updatedAt.slice(0, 16).replace("T", " ")}</p>
+                  <p>更新：{fmtTime(p.updatedAt)}</p>
                 </td>
                 <td className="px-3 py-2.5">
                   <div className="flex flex-wrap justify-end gap-1.5 text-xs">
@@ -376,19 +384,10 @@ export default function PromptManager({
         )}
       </div>
 
-      <div className="mt-4 flex items-center justify-between text-sm text-zinc-400">
-        <span>共 {total} 条，{page} / {Math.max(1, totalPages)}</span>
-        <div className="flex gap-2">
-          <button disabled={page <= 1} onClick={() => setPage(page - 1)}
-            className="rounded-lg bg-zinc-800 px-3 py-1.5 disabled:opacity-40 hover:bg-zinc-700">
-            上一页
-          </button>
-          <button disabled={page >= totalPages} onClick={() => setPage(page + 1)}
-            className="rounded-lg bg-zinc-800 px-3 py-1.5 disabled:opacity-40 hover:bg-zinc-700">
-            下一页
-          </button>
-        </div>
+      <div className="mt-4 text-center text-sm text-zinc-400">
+        共 {total} 条，{page} / {Math.max(1, totalPages)}
       </div>
+      <Pagination page={page} totalPages={totalPages} onPage={(n) => setPage(n)} />
     </div>
   );
 }

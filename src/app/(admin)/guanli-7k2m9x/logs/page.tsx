@@ -3,6 +3,7 @@ import { requireAdmin } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { ADMIN_BASE } from "@/lib/admin-path";
 import Link from "next/link";
+import Pagination from "@/components/Pagination";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "操作日志" };
@@ -217,37 +218,17 @@ export default async function AdminLogsPage({
       </div>
 
       {/* 分页 */}
-      <div className="mt-4 flex items-center justify-between text-sm text-zinc-400">
+      <div className="mt-4 flex items-center justify-center text-sm text-zinc-400">
         <span>
           共 {total} 条，{page} / {Math.max(1, totalPages)}
         </span>
-        <div className="flex gap-2">
-          {page > 1 ? (
-            <Link
-              href={buildUrl({ page: String(page - 1) })}
-              className="rounded-lg bg-zinc-800 px-3 py-1.5 hover:bg-zinc-700"
-            >
-              上一页
-            </Link>
-          ) : (
-            <button disabled className="rounded-lg bg-zinc-800 px-3 py-1.5 opacity-40">
-              上一页
-            </button>
-          )}
-          {page < totalPages ? (
-            <Link
-              href={buildUrl({ page: String(page + 1) })}
-              className="rounded-lg bg-zinc-800 px-3 py-1.5 hover:bg-zinc-700"
-            >
-              下一页
-            </Link>
-          ) : (
-            <button disabled className="rounded-lg bg-zinc-800 px-3 py-1.5 opacity-40">
-              下一页
-            </button>
-          )}
-        </div>
       </div>
+      <Pagination
+        page={page}
+        totalPages={totalPages}
+        basePath={`${ADMIN_BASE}/logs`}
+        query={{ q, action, targetType }}
+      />
     </div>
   );
 }

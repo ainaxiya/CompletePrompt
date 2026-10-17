@@ -58,6 +58,24 @@ export default async function SiteLayout({ children }: { children: React.ReactNo
             </nav>
           </div>
 
+          {/* 友情链接（后台「网站设置 → 友情链接」配置，copyright 上方一排小字） */}
+          {site.friendLinks.length > 0 && (
+            <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1.5 border-t border-zinc-800/70 py-3 text-xs text-zinc-500">
+              <span className="text-zinc-600">友情链接：</span>
+              {site.friendLinks.map((l) => (
+                <a
+                  key={l.url}
+                  href={l.url}
+                  target="_blank"
+                  rel="noopener nofollow"
+                  className="transition hover:text-emerald-300"
+                >
+                  {l.name}
+                </a>
+              ))}
+            </div>
+          )}
+
           {/* 下部：版权条（橙色点缀） */}
           <div className="flex flex-col items-center justify-between gap-2 border-t border-zinc-800/70 py-4 text-xs text-zinc-500 sm:flex-row">
             <span className="flex items-center gap-1.5">

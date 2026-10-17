@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { searchPrompts } from "@/lib/meili";
 import PromptCard from "@/components/PromptCard";
+import Pagination from "@/components/Pagination";
 import { getServerLocale, translate as t } from "@/lib/i18n";
 import { db } from "@/lib/db";
 
@@ -113,11 +114,12 @@ export default async function SearchPage({
       )}
 
       {totalPages > 1 && (
-        <div className="mt-8 flex items-center justify-center gap-2">
-          {page > 1 && <Link href={qs({ page: page - 1 })} className="rounded-lg bg-zinc-800 px-4 py-2 text-sm hover:bg-zinc-700">{t(locale, "common.prev")}</Link>}
-          <span className="px-3 text-sm text-zinc-400">{page} / {totalPages}</span>
-          {page < totalPages && <Link href={qs({ page: page + 1 })} className="rounded-lg bg-zinc-800 px-4 py-2 text-sm hover:bg-zinc-700">{t(locale, "common.next")}</Link>}
-        </div>
+        <Pagination
+          page={page}
+          totalPages={totalPages}
+          basePath="/search"
+          query={{ q, type, category, sort }}
+        />
       )}
     </div>
   );

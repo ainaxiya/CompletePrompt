@@ -14,6 +14,11 @@ export const DEFAULT_SETTINGS = {
     logoIcon: "",
     favicon: "",
     appIcon: "",
+    // 首页 banner 图（PC 横版 / 手机竖版，/site-assets/ 下的 URL）
+    bannerPc: "",
+    bannerMobile: "",
+    // 友情链接：每行一条「名称|URL」，前台页脚 copyright 上方显示
+    friendLinks: "",
     // 新内容自动提交 MeiliSearch 的间隔（秒）；0 = 永不自动更新
     meiliSyncSeconds: 30,
   },
@@ -151,6 +156,18 @@ export async function getPublicSite() {
   const logoIcon = toAssetUrl(site.logoIcon);
   const appIcon = toAssetUrl(site.appIcon) || "/icon-512.png";
 
+  // 友情链接：每行「名称|URL」（也容忍逗号分隔），仅放行 http(s) 链接
+  const friendLinks = (site.friendLinks || "")
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .map((l) => {
+      const m = l.split(/\s*[|,，]\s*/).filter(Boolean);
+      return m.length >= 2 && /^https?:\/\//i.test(m[1]) ? { name: m[0], url: m[1] } : null;
+    })
+    .filter((x): x is { name: string; url: string } => !!x)
+    .slice(0, 20);
+
   return {
     siteName: pick(site.siteName, s.basic.siteName),
     siteNameEn: pick(site.siteNameEn, s.basic.siteNameEn),
@@ -168,5 +185,8 @@ export async function getPublicSite() {
     appIcon,
     icon192: site.appIcon ? appIcon : "/icon-192.png",
     appleIcon: site.appIcon ? appIcon : "/apple-touch-icon.png",
+    bannerPc: (site.bannerPc || "").trim(),
+    bannerMobile: (site.bannerMobile || "").trim(),
+    friendLinks,
   };
 }

@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, permanentRedirect } from "next/navigation";
 import { db } from "@/lib/db";
 import PromptCard from "@/components/PromptCard";
+import Pagination from "@/components/Pagination";
 import CategoryIcon from "@/components/CategoryIcon";
-import { getCategoryMeta, categoryDesc } from "@/lib/category-meta";
+import { getCategoryMeta, categoryDesc, LEGACY_CAT_SLUG } from "@/lib/category-meta";
 import { getServerLocale, translate as t } from "@/lib/i18n";
 
 export const dynamic = "force-dynamic";
@@ -28,7 +29,18 @@ export default async function CategoryDetail({
   const sp = await searchParams;
 
   const cat = await db.category.findUnique({ where: { slug } });
-  if (!cat) notFound();
+  if (!cat) {
+    // 旧中文 slug → 新 2 字母码，301 永久跳转（保留 sort/page 参数）
+    const legacy = LEGACY_CAT_SLUG[slug];
+    if (legacy) {
+      const qs = new URLSearchParams();
+      if (sp.sort) qs.set("sort", sp.sort);
+      if (sp.page) qs.set("page", sp.page);
+      const q = qs.toString();
+      permanentRedirect(`/category/${legacy}${q ? `?${q}` : ""}`);
+    }
+    notFound();
+  }
 
   const meta = getCategoryMeta(slug);
   const sortRaw = sp.sort || "new";
@@ -71,13 +83,6 @@ export default async function CategoryDetail({
     const qs = p.toString();
     return `/category/${encodeURIComponent(slug)}${qs ? `?${qs}` : ""}`;
   };
-  const pageHref = (n: number) => {
-    const p = new URLSearchParams();
-    if (sort !== "new") p.set("sort", sort);
-    p.set("page", String(n));
-    return `/category/${encodeURIComponent(slug)}?${p.toString()}`;
-  };
-
   const sortBtn = (active: boolean, label: string, href: string, arrow?: string) => (
     <Link
       href={href}
@@ -138,19 +143,12 @@ export default async function CategoryDetail({
       )}
 
       {totalPages > 1 && (
-        <div className="mt-8 flex items-center justify-center gap-2">
-          {page > 1 && (
-            <Link href={pageHref(page - 1)} className="rounded-lg bg-zinc-800 px-4 py-2 text-sm hover:bg-zinc-700">
-              {t(locale, "common.prev")}
-            </Link>
-          )}
-          <span className="px-3 text-sm text-zinc-400">{page} / {totalPages}</span>
-          {page < totalPages && (
-            <Link href={pageHref(page + 1)} className="rounded-lg bg-zinc-800 px-4 py-2 text-sm hover:bg-zinc-700">
-              {t(locale, "common.next")}
-            </Link>
-          )}
-        </div>
+        <Pagination
+          page={page}
+          totalPages={totalPages}
+          basePath={`/category/${encodeURIComponent(slug)}`}
+          query={{ sort: sort !== "new" ? sort : undefined }}
+        />
       )}
     </div>
   );

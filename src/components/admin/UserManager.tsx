@@ -3,6 +3,7 @@
 // 用户管理（前台会员）：搜索、新建、详情全字段修改、重置密码、快捷启禁用/发布权限、删除
 import { useCallback, useEffect, useState } from "react";
 import OptionDropdown from "@/components/OptionDropdown";
+import Pagination from "@/components/Pagination";
 
 type Row = {
   id: number;
@@ -168,27 +169,7 @@ export default function UserManager() {
         </table>
       </div>
 
-      {totalPages > 1 && (
-        <div className="mt-4 flex items-center justify-center gap-2 text-sm">
-          <button
-            disabled={page <= 1}
-            onClick={() => setPage((p) => p - 1)}
-            className="rounded border border-zinc-700 px-3 py-1 disabled:opacity-40"
-          >
-            上一页
-          </button>
-          <span className="text-zinc-400">
-            {page} / {totalPages}
-          </span>
-          <button
-            disabled={page >= totalPages}
-            onClick={() => setPage((p) => p + 1)}
-            className="rounded border border-zinc-700 px-3 py-1 disabled:opacity-40"
-          >
-            下一页
-          </button>
-        </div>
-      )}
+      <Pagination page={page} totalPages={totalPages} onPage={(n) => setPage(n)} />
 
       {showCreate && (
         <CreateModal

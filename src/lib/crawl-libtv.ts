@@ -226,10 +226,10 @@ const KIND_HEAD: Record<string, string> = {
   text: "文本",
 };
 const KIND_CATEGORY: Record<string, string> = {
-  image: "图片创作",
-  video: "视频创作",
-  audio: "音频创作",
-  text: "其他",
+  image: "tp",
+  video: "sp",
+  audio: "yp",
+  text: "qt",
 };
 const IMG_CAP = 12; // 每作品图片节点下载上限
 const VID_CAP = 6; // 每作品视频节点截帧上限
@@ -291,7 +291,7 @@ export function buildWorkPayload(detail: any): WorkPayload {
   return {
     content,
     type,
-    category: KIND_CATEGORY[type] || "其他",
+    category: KIND_CATEGORY[type] || "qt",
     coverUrl: detail.coverUrl ? String(detail.coverUrl) : null,
     mediaPlan,
     imageNodeCount: typeCount.image || 0,

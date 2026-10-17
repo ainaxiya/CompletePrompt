@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import Pagination from "@/components/Pagination";
 
 type CrawlItemRow = {
   id: number;
@@ -178,6 +179,53 @@ export default function CollectManager() {
     setSelected(allSelected ? new Set() : new Set(selectable.map((r) => r.id)));
   };
 
+  // 删除 / 不采集（method: DELETE=真删，下次获取会重新进来；PATCH=标记 skipped，后续不再进来）
+  const actItems = async (method: "DELETE" | "PATCH", ids: number[]) => {
+    const res = await fetch("/api/admin/collect/items", {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ source, ids }),
+    });
+    const d = await res.json();
+    if (!res.ok) {
+      setMsg({ type: "err", text: d.error || "操作失败" });
+      return;
+    }
+    const n = method === "DELETE" ? d.deleted : d.skipped;
+    setMsg({
+      type: "ok",
+      text:
+        method === "DELETE"
+          ? `已删除 ${n} 条（下次一键获取会重新进来）`
+          : `已将 ${n} 条标记为不采集（列表移除，后续获取不再出现）`,
+    });
+    await load();
+  };
+  const batchDelete = () => {
+    if (selected.size === 0) {
+      setMsg({ type: "err", text: "请先勾选要删除的条目" });
+      return;
+    }
+    if (!confirm(`确定删除选中的 ${selected.size} 条吗？删除后下次一键获取会重新进来。`)) return;
+    actItems("DELETE", [...selected]);
+  };
+  const batchSkip = () => {
+    if (selected.size === 0) {
+      setMsg({ type: "err", text: "请先勾选条目" });
+      return;
+    }
+    if (!confirm(`确定将选中的 ${selected.size} 条标记为「不采集」吗？列表将移除，且下次一键获取不再出现。`)) return;
+    actItems("PATCH", [...selected]);
+  };
+  const rowDelete = (r: CrawlItemRow) => {
+    if (!confirm(`确定删除「${r.title.slice(0, 30)}」吗？删除后下次一键获取会重新进来。`)) return;
+    actItems("DELETE", [r.id]);
+  };
+  const rowSkip = (r: CrawlItemRow) => {
+    if (!confirm(`确定将「${r.title.slice(0, 30)}」标记为不采集吗？后续一键获取不再出现。`)) return;
+    actItems("PATCH", [r.id]);
+  };
+
   const curSource = sources.find((s) => s.id === source);
   const selectableRows = rows.filter((r) => r.status === "new" || r.status === "failed");
   const pageAllSelected = selectableRows.length > 0 && selectableRows.every((r) => selected.has(r.id));
@@ -297,6 +345,21 @@ export default function CollectManager() {
             >
               全部采集入库
             </button>
+            <span className="mx-1 h-5 w-px bg-zinc-700" />
+            <button
+              onClick={batchSkip}
+              disabled={running || selected.size === 0}
+              className="rounded-lg border border-amber-700 px-3 py-2 text-sm text-amber-300 hover:bg-amber-900/30 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              批量不采集
+            </button>
+            <button
+              onClick={batchDelete}
+              disabled={running || selected.size === 0}
+              className="rounded-lg border border-rose-700 px-3 py-2 text-sm text-rose-300 hover:bg-rose-900/30 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              批量删除
+            </button>
           </div>
         )}
       </div>
@@ -316,12 +379,13 @@ export default function CollectManager() {
               <th className="w-24 px-3 py-2.5">作者</th>
               <th className="w-40 px-3 py-2.5">更新时间</th>
               <th className="w-20 px-3 py-2.5">状态</th>
+              {tab !== "collected" && <th className="w-32 px-3 py-2.5">操作</th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-800/70">
             {rows.length === 0 && !loading && (
               <tr>
-                <td colSpan={6} className="px-3 py-10 text-center text-zinc-600">
+                <td colSpan={7} className="px-3 py-10 text-center text-zinc-600">
                   暂无数据，点击右上角「一键获取更新」
                 </td>
               </tr>
@@ -372,7 +436,7 @@ export default function CollectManager() {
                       )}
                     </div>
                     <div className="mt-1 flex flex-wrap gap-1">
-                      {r.tags.slice(0, 3).map((tg) => (
+                      {r.tags.filter((tg) => !tg.startsWith("__meta__")).slice(0, 3).map((tg) => (
                         <span key={tg} className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-400">
                           {tg}
                         </span>
@@ -385,6 +449,32 @@ export default function CollectManager() {
                   <td className="px-3 py-2.5">
                     <span className={`rounded px-2 py-0.5 text-xs ${STATUS_BADGE[r.status]}`}>{STATUS_TEXT[r.status]}</span>
                   </td>
+                  {tab !== "collected" && (
+                    <td className="px-3 py-2.5">
+                      {selectable ? (
+                        <div className="flex gap-1.5">
+                          <button
+                            onClick={() => rowSkip(r)}
+                            disabled={running}
+                            title="标记不采集：列表移除，后续一键获取不再出现"
+                            className="rounded border border-amber-700/70 px-2 py-1 text-xs text-amber-300 hover:bg-amber-900/30 disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            不采集
+                          </button>
+                          <button
+                            onClick={() => rowDelete(r)}
+                            disabled={running}
+                            title="删除：下次一键获取会重新进来"
+                            className="rounded border border-rose-700/70 px-2 py-1 text-xs text-rose-300 hover:bg-rose-900/30 disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            删除
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-zinc-600">—</span>
+                      )}
+                    </td>
+                  )}
                 </tr>
               );
             })}
@@ -393,27 +483,7 @@ export default function CollectManager() {
       </div>
 
       {/* 分页 */}
-      {total > 20 && (
-        <div className="flex items-center justify-center gap-3 text-sm">
-          <button
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page === 1}
-            className="rounded-lg border border-zinc-700 px-3 py-1.5 text-zinc-300 disabled:opacity-40"
-          >
-            上一页
-          </button>
-          <span className="text-zinc-500">
-            {page} / {totalPages}
-          </span>
-          <button
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-            disabled={page >= totalPages}
-            className="rounded-lg border border-zinc-700 px-3 py-1.5 text-zinc-300 disabled:opacity-40"
-          >
-            下一页
-          </button>
-        </div>
-      )}
+      <Pagination page={page} totalPages={totalPages} onPage={(n) => setPage(n)} />
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { ADMIN_BASE } from "@/lib/admin-path";
+import { getCategoryMeta } from "@/lib/category-meta";
 
 export const dynamic = "force-dynamic";
 
@@ -63,7 +64,7 @@ export default async function AdminHome() {
           <div className="divide-y divide-zinc-800/70">
             {pendingList.map((p) => (
               <div key={p.id} className="flex items-center gap-3 py-2.5 text-sm">
-                <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-xs text-zinc-400">{p.category}</span>
+                <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-xs text-zinc-400">{getCategoryMeta(p.category).name.zh}</span>
                 <Link href={`/p/${p.id}`} target="_blank" className="flex-1 truncate text-zinc-200 hover:text-emerald-300">
                   {p.title}
                 </Link>

@@ -11,6 +11,9 @@ type SiteData = {
   logoIcon: string;
   favicon: string;
   appIcon: string;
+  bannerPc: string;
+  bannerMobile: string;
+  friendLinks: string;
   meiliSyncSeconds: number;
 };
 
@@ -25,6 +28,12 @@ const UPLOAD_FILES = [
   { key: "logoIcon" as const, filename: "logo-icon-120.png", label: "站点 LOGO", hint: "120×120 PNG" },
   { key: "favicon" as const, filename: "favicon.ico", label: "Favicon", hint: "ICO / PNG" },
   { key: "appIcon" as const, filename: "app-icon.png", label: "App 图标", hint: "512×512 PNG" },
+];
+
+// 首页 banner：PC 横版 + 手机竖版（webp，上限 8MB）
+const BANNER_FILES = [
+  { key: "bannerPc" as const, filename: "home-banner-pc.webp", label: "PC 版（横版）", hint: "建议 2560×1080 webp" },
+  { key: "bannerMobile" as const, filename: "home-banner-mobile.webp", label: "手机版（竖版）", hint: "建议 1024×1536 webp" },
 ];
 
 export default function SiteSettingsForm({ initial }: Props) {
@@ -67,11 +76,11 @@ export default function SiteSettingsForm({ initial }: Props) {
       img.src = url;
     });
 
-  const upload = async (key: (typeof UPLOAD_FILES)[number]["key"], filename: string, file: File) => {
+  const upload = async (key: "logoIcon" | "favicon" | "appIcon" | "bannerPc" | "bannerMobile", filename: string, file: File, maxMB = 2) => {
     setUploading(key);
     try {
-      if (file.size > 2 * 1024 * 1024) {
-        alert("文件大小不能超过 2MB");
+      if (file.size > maxMB * 1024 * 1024) {
+        alert(`文件大小不能超过 ${maxMB}MB`);
         return;
       }
       const fd = new FormData();
@@ -232,6 +241,68 @@ export default function SiteSettingsForm({ initial }: Props) {
             );
           })}
         </div>
+      </div>
+
+      {/* 首页 Banner 图 */}
+      <div className={cardCls}>
+        <h3 className="mb-1 text-sm font-medium text-zinc-300">首页 Banner 图</h3>
+        <p className="mb-4 text-xs text-zinc-500">
+          上传后首页顶部展示 banner 图（未上传则显示默认文字框）；手机端自动使用竖版，未传竖版时回退横版。
+        </p>
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+          {BANNER_FILES.map((u) => {
+            const url = f[u.key];
+            return (
+              <div key={u.key} className="rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
+                <label className="mb-2 block text-xs text-zinc-400">{u.label}</label>
+                <div className="mb-2 flex h-28 items-center justify-center overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900">
+                  {url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={url} alt={u.label} className="max-h-28 max-w-full object-contain" />
+                  ) : (
+                    <span className="text-xs text-zinc-600">未上传</span>
+                  )}
+                </div>
+                <p className="mb-2 text-xs text-zinc-500">{u.hint}</p>
+                <input
+                  type="file"
+                  accept="image/webp,image/png"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) upload(u.key, u.filename, file, 8);
+                    e.target.value = "";
+                  }}
+                  className="hidden"
+                  id={`upload-${u.key}`}
+                />
+                <label
+                  htmlFor={`upload-${u.key}`}
+                  className="block cursor-pointer rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-center text-xs text-zinc-300 hover:bg-zinc-700"
+                >
+                  {uploading === u.key ? "上传中…" : url ? "替换文件" : "选择上传"}
+                </label>
+                {url && (
+                  <p className="mt-1.5 truncate text-center text-xs text-emerald-400">{url}</p>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* 友情链接 */}
+      <div className={cardCls}>
+        <h3 className="mb-1 text-sm font-medium text-zinc-300">友情链接</h3>
+        <p className="mb-4 text-xs text-zinc-500">
+          每行一条，格式「名称|URL」（仅 http/https），前台页脚版权上方显示一排小字，最多取前 20 条。
+        </p>
+        <textarea
+          value={f.friendLinks}
+          onChange={(e) => set("friendLinks", e.target.value)}
+          rows={4}
+          className={inputCls}
+          placeholder={"示例：\n完整提示词|https://www.wango8.com\nAI导航|https://example.com"}
+        />
       </div>
 
       {/* 保存按钮 */}

@@ -21,14 +21,21 @@ function libtvTags(it: LibtvFeedItem): string[] {
     .map((s) => s.slice(0, 30));
 }
 
-// 即梦 tags 约定（入库时前 4 个会被剥离）：
-//   [0] 提示词  [1] 模型名  [2] 作品形态 image|video  [3] 视频地址（仅视频作品，短时效签名）
+// 即梦 tags 约定：
+//   [0] __meta__ 前缀的 JSON（提示词/模型名/形态/视频地址/大图地址，入库时剥离，不展示）
+//   其余为真实标签：模型名、作品形态（文生图/文生视频）
+const JIMENG_META_PREFIX = "__meta__";
 function jimengTags(it: JimengFeedItem): string[] {
-  const tags: string[] = [];
-  if (it.prompt) tags.push(it.prompt.slice(0, 500));
-  if (it.modelName) tags.push(it.modelName.slice(0, 50));
-  tags.push(it.workType);
-  if (it.videoUrl) tags.push(it.videoUrl.slice(0, 2000));
+  const meta = JSON.stringify({
+    p: it.prompt.slice(0, 1000),
+    m: it.modelName.slice(0, 50),
+    w: it.workType,
+    v: (it.videoUrl || "").slice(0, 2000),
+    i: (it.imageUrl || "").slice(0, 2000),
+  });
+  const tags: string[] = [JIMENG_META_PREFIX + meta];
+  if (it.modelName) tags.push(it.modelName.slice(0, 30));
+  tags.push(it.workType === "video" ? "文生视频" : "文生图");
   return tags;
 }
 
@@ -84,6 +91,7 @@ async function handleLibtvFetch(adminId: number, source: string, pages: number) 
     const remoteUpdatedAt = parseCnDate(it.updateAt);
     const remoteCreatedAt = parseCnDate(it.publishAt || it.createAt);
     const ex = exMap.get(it.projectUuid);
+    if (ex?.status === "skipped") continue; // 已标记"不采集"，不再更新也不计数
     if (!ex) {
       await db.crawlItem.create({
         data: {
@@ -179,6 +187,7 @@ async function handleJimengFetch(adminId: number, source: string, pages: number)
     const remoteUpdatedAt = it.updateTime;
     const title = it.title || (it.workType === "video" ? "即梦AI视频作品" : "即梦AI作品");
     const ex = exMap.get(it.itemId);
+    if (ex?.status === "skipped") continue; // 已标记"不采集"，不再更新也不计数
     if (!ex) {
       await db.crawlItem.create({
         data: {

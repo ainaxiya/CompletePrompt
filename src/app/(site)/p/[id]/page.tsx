@@ -2,10 +2,12 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { getCurrentUser, getCurrentAdmin } from "@/lib/auth";
-import { CopyButton, ActionButtons } from "@/components/Buttons";
+import { CopyButton, ActionButtons, BrowserBookmarkButton } from "@/components/Buttons";
 import PromptCard from "@/components/PromptCard";
 import AutoTranslate from "@/components/AutoTranslate";
 import MediaGallery, { SectionMedia } from "@/components/MediaGallery";
+import ImageLightbox from "@/components/ImageLightbox";
+import CategoryIcon from "@/components/CategoryIcon";
 import { getServerLocale, translate as t } from "@/lib/i18n";
 import { detectLang } from "@/lib/langdetect";
 import type { MediaItem } from "@/lib/media";
@@ -17,6 +19,14 @@ import { COMMENT } from "@/lib/comment-policy";
 import CommentSection, { type CommentData } from "@/components/CommentSection";
 
 const COMMENT_PAGE_SIZE = COMMENT.PAGE_SIZE;
+
+// 创作类型元信息：key → 中文标签 / 链接 slug / 图标 / 配色
+const TYPE_META: Record<string, { zh: string; en: string; icon: string; cls: string }> = {
+  text:  { zh: "文本创作", en: "Text",  icon: "📝", cls: "bg-sky-500/15 text-sky-300 border-sky-700/50" },
+  image: { zh: "文生图",   en: "Image", icon: "🎨", cls: "bg-emerald-500/15 text-emerald-300 border-emerald-700/50" },
+  video: { zh: "文生视频", en: "Video", icon: "🎬", cls: "bg-violet-500/15 text-violet-300 border-violet-700/50" },
+  audio: { zh: "文生音频", en: "Audio", icon: "🎵", cls: "bg-amber-500/15 text-amber-300 border-amber-700/50" },
+};
 
 export const dynamic = "force-dynamic";
 
@@ -147,16 +157,40 @@ export default async function PromptDetail({
     if (sections.length === 0) sections.push({ no: 0, label: "", body: p.content.trim() });
   }
 
-  const related = await db.prompt.findMany({
-    where: { status: "published", id: { not: pid }, type: p.type },
-    orderBy: [{ featured: "desc" }, { likeCount: "desc" }],
-    take: 6,
-    select: {
-      id: true, title: true, type: true, category: true, tags: true,
-      sourceAuthor: true, likeCount: true, coverUrl: true, featured: true,
-      description: true, content: true,
-    },
+  // 相关推荐：同分类下随机 10 条（排除自己）
+  const sameCatIds = await db.prompt.findMany({
+    where: { status: "published", id: { not: pid }, category: p.category },
+    select: { id: true },
   });
+  const shuffledIds = sameCatIds
+    .map((r) => r.id)
+    .sort(() => Math.random() - 0.5)
+    .slice(0, 10);
+  const relatedRaw = shuffledIds.length
+    ? await db.prompt.findMany({
+        where: { id: { in: shuffledIds } },
+        select: {
+          id: true, title: true, type: true, category: true, tags: true,
+          sourceAuthor: true, likeCount: true, coverUrl: true, featured: true,
+          description: true, content: true,
+        },
+      })
+    : [];
+  // 按洗牌后的 id 顺序输出，保证"随机感"
+  const idOrder = new Map(shuffledIds.map((id, i) => [id, i]));
+  const related = relatedRaw.sort(
+    (a, b) => (idOrder.get(a.id) ?? 0) - (idOrder.get(b.id) ?? 0)
+  );
+
+  // 热搜词：从全站已发布提示词的 tags 中随机抽 15 个
+  const tagRows = await db.prompt.findMany({
+    where: { status: "published", tags: { isEmpty: false } },
+    select: { tags: true },
+    take: 500,
+  });
+  const tagSet = new Set<string>();
+  tagRows.forEach((r) => r.tags.forEach((tg) => tagSet.add(tg)));
+  const hotTags = [...tagSet].sort(() => Math.random() - 0.5).slice(0, 15);
 
   // 评论设置 + 首屏评论（顶级 20 条，含已赞状态；有公开回复的已删评论显示占位）
   const settings = await getSettings();
@@ -204,6 +238,12 @@ export default async function PromptDetail({
   }
   const topMedia = media.filter((m) => typeof m.section !== "number");
 
+  const typeMeta = TYPE_META[p.type] || TYPE_META.text;
+  const typeLabel = locale === "zh" ? typeMeta.zh : typeMeta.en;
+  const catMeta = p.category ? getCategoryMeta(p.category) : null;
+  const viewCount = p.viewCount + (p.status === "published" ? 1 : 0);
+  const pubDate = (p.publishedAt || p.createdAt).toISOString().slice(0, 10);
+
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "CreativeWork",
@@ -216,15 +256,30 @@ export default async function PromptDetail({
 
   return (
     <>
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_280px]">
-      <article>
+    {/* 布局：桌面端左右两列 — 左列（面包屑+内容+热搜词+评论 连续堆叠），右列相关推荐；手机端同序堆叠 */}
+    <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
+      {/* 左列：内容主体 */}
+      <div className="min-w-0 flex-1 space-y-6">
+      <article className="self-start">
         <div className="mb-4">
-          <div className="mb-3 flex flex-wrap items-center gap-2">
-            {p.category && (
-              <span className={`rounded px-2 py-0.5 text-xs font-medium ${getCategoryMeta(p.category).bg} ${getCategoryMeta(p.category).fg}`}>
-                {p.category}
-              </span>
+          {/* 面包屑：栏目（可点进列表） + 创作类型（可点进类型列表） */}
+          <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
+            {p.category && catMeta && (
+              <Link
+                href={`/category/${encodeURIComponent(p.category)}`}
+                className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-sm font-medium transition hover:opacity-80 ${catMeta.bg} ${catMeta.fg} border-transparent`}
+              >
+                <CategoryIcon icon={catMeta.icon} className="h-4 w-4" />
+                {catMeta.name[locale]}
+              </Link>
             )}
+            <Link
+              href={`/type/${encodeURIComponent(p.type)}`}
+              className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-sm font-medium transition hover:opacity-80 ${typeMeta.cls}`}
+            >
+              <span>{typeMeta.icon}</span>
+              {typeLabel}
+            </Link>
             {p.featured && (
               <span className="rounded bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-300">★</span>
             )}
@@ -240,20 +295,24 @@ export default async function PromptDetail({
             )}
           </div>
           <h1 className="mb-3 text-2xl font-bold leading-tight">{p.title}</h1>
-          <div className="flex flex-wrap items-center gap-3 text-sm text-zinc-400">
-            <span>{p.sourceAuthor || p.user.nickname || p.user.username}</span>
-            <span>·</span>
-            <span>{p.createdAt.toISOString().slice(0, 10)}</span>
-            <span>·</span>
-            <span>{t(locale, "detail.views", { n: p.viewCount + (p.status === "published" ? 1 : 0) })}</span>
-            {p.sourceUrl && (
-              <>
-                <span>·</span>
-                <a href={p.sourceUrl} target="_blank" rel="noopener nofollow" className="text-emerald-400 hover:underline">
-                  {t(locale, "detail.originalWork")}
-                </a>
-              </>
-            )}
+          {/* 元信息：作者 / 发布日期 / 观看 / 赞 + 原作品链接 */}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm text-zinc-400">
+            <span className="inline-flex items-center gap-1.5">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 text-zinc-500"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+              {locale === "zh" ? "作者" : "Author"}：{p.sourceAuthor || p.user.nickname || p.user.username}
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 text-zinc-500"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+              {locale === "zh" ? "发布日期" : "Published"}：{pubDate}
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 text-zinc-500"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              {locale === "zh" ? "观看" : "Views"}：{viewCount}
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 text-zinc-500"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3z"/><path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>
+              {locale === "zh" ? "赞" : "Likes"}：{p.likeCount}
+            </span>
           </div>
           {p.status === "rejected" && p.rejectReason && (
             <p className="mt-2 rounded border border-rose-800/50 bg-rose-950/30 px-3 py-2 text-xs text-rose-300">
@@ -279,13 +338,15 @@ export default async function PromptDetail({
           </p>
         )}
 
-        <div className="mb-4">
+        {/* 点赞 / 收藏 / 浏览器收藏：靠右对齐 */}
+        <div className="mb-4 flex flex-wrap items-center justify-end gap-2.5">
           <ActionButtons
             promptId={p.id}
             initialLikes={p.likeCount}
             initialLiked={!!liked}
             initialFaved={!!faved}
           />
+          <BrowserBookmarkButton title={p.title} />
         </div>
 
         <div className="space-y-3">
@@ -340,7 +401,40 @@ export default async function PromptDetail({
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonScript(jsonLd) }} />
       </article>
 
-      <aside className="space-y-6">
+      {/* 热搜词：紧随内容 */}
+      {hotTags.length > 0 && (
+        <section className="self-start rounded-xl border border-zinc-800 bg-zinc-900/60 p-4">
+          <h3 className="mb-3 flex items-center gap-2 text-sm font-medium text-zinc-300">
+            <span className="text-orange-400">🔥</span>
+            {locale === "zh" ? "热搜词" : "Trending"}
+          </h3>
+          <div className="flex flex-wrap gap-2">
+            {hotTags.map((tag) => (
+              <Link
+                key={tag}
+                href={`/search?q=${encodeURIComponent(tag)}`}
+                className="rounded-full border border-zinc-700 bg-zinc-800/70 px-3 py-1 text-xs text-zinc-300 transition hover:border-emerald-500/60 hover:text-emerald-300"
+              >
+                #{tag}
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* 评论：紧随热搜词 */}
+      <section className="self-start">
+        <CommentSection
+          promptId={pid}
+          initialComments={comments}
+          closed={commentsClosed}
+          initialTotal={commentTotal}
+        />
+      </section>
+      </div>
+
+      {/* 右列：相关推荐 */}
+      <aside className="w-full shrink-0 space-y-6 self-start lg:w-[280px]">
         <div>
           <h3 className="mb-3 text-sm font-medium text-zinc-400">{t(locale, "detail.related")}</h3>
           <div className="space-y-2">
@@ -352,14 +446,8 @@ export default async function PromptDetail({
       </aside>
     </div>
 
-      <section className="mt-8">
-        <CommentSection
-          promptId={pid}
-          initialComments={comments}
-          closed={commentsClosed}
-          initialTotal={commentTotal}
-        />
-      </section>
+    {/* 图片灯箱：拦截正文/画廊图片点击，本页放大显示 */}
+    <ImageLightbox />
     </>
   );
 }

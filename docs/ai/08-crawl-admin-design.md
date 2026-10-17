@@ -13,16 +13,20 @@
    - 新作品 → `status=new`（待采集）
    - 已入库作品远端更新时间晚于入库时间 → 计入「有更新」提示，但不重复入库
    - 返回「共获取 N 条 / 剔除 X / 可采集 Y / 新发现 Z / 有更新 W」
-4. 列表三个 Tab：待采集 / 已采集 / 采集失败；列：多选框、封面、标题（源站链接）、作者、标签、远端更新时间、状态。
+4. 列表三个 Tab：待采集 / 已采集 / 采集失败；列：多选框、封面、标题（源站链接）、作者、标签、远端更新时间、状态、操作。
 5. 勾选若干条 →「确认采集进库」；或「全部采集入库」（所有待采集，单次上限 100 条）。
 6. 入库是后台异步任务（`CrawlJob`），前端 1.5s 轮询进度条；进度卡片若出现失败，红字只显示**最后一条**失败原因（`CrawlJob.lastError`，格式《标题》：原因）；完成后刷新列表，失败条目进入「采集失败」Tab 可勾选重试。
+7. **删除 / 不采集（v0.5）**：
+   - 「批量删除」/ 行内「删除」：真实删除条目（仅限 new/failed），下次一键获取会重新进来。
+   - 「批量不采集」/ 行内「不采集」：`status=skipped`，从列表消失，后续一键获取遇到相同 remoteId 直接跳过（不更新不计数）；「全部采集入库」只取 new，不会误采 skipped。
+   - API：`DELETE /api/admin/collect/items`（批量删除）、`PATCH /api/admin/collect/items`（批量不采集），均记录后台操作日志。
 
 ## 2. 数据模型（prisma/schema.prisma）
 
-- `CrawlItem`：远端作品快照。`@@unique([source, remoteId])` 去重；`status = new | collected | failed`；`promptId @unique` 关联入库的 Prompt。
+- `CrawlItem`：远端作品快照。`@@unique([source, remoteId])` 去重；`status = new | collected | failed | skipped`（skipped=不采集，获取时跳过）；`promptId @unique` 关联入库的 Prompt。
   - LIBTV：`remoteId = projectUuid`，`templateUuid` 存模板 UUID
   - 即梦AI：`remoteId = itemId`（common_attr.id），`templateUuid = null`（即梦无此概念）
-  - 即梦AI 的 `tags` 数组约定：第 0 个元素存提示词，第 1 个存模型名，后续为实际标签
+  - 即梦AI 的 `tags` 数组约定（v0.5 起）：第 0 个元素为 `__meta__` 前缀的 JSON（`p`=提示词、`m`=模型名、`w`=形态 image|video、`v`=视频地址、`i`=大图地址），后续为真实标签（模型名、文生图/文生视频）；列表展示与入库时剥离 `__meta__` 前缀标签
 - `CrawlJob`：入库任务（source/itemIds/total/done/succeeded/failed/lastError/status/message/adminId）。`lastError` 只保留最后一条失败原因供进度卡片展示。运行态卡死超过 45 分钟（如 PM2 重启）会在下次发起任务时被 `reapStaleJobs()` 回收。
 - `Prompt` 增加反向关系 `crawlItem CrawlItem?`。
 
@@ -33,7 +37,7 @@
 远端 detail 接口的 `snapshotData` 包含画布全部节点，`extractNodes()` 提取有媒体产物的节点（与 `scripts/liblib-map.mjs` 同逻辑）：
 
 - 每个媒体节点生成一个正文分节：`[N] 图片生成｜｜图片节点 12` + `中文提示词：…`，N 从 1 开始，媒体 JSON 的 `section` 与之一一对应（详情页按 section 渲染节点图）。
-- 作品主类型取节点类型多数（video > image > audio > text），分类映射 `视频创作 / 图片创作 / 音频创作 / 其他`。
+- 作品主类型取节点类型多数（video > image > audio > text），分类映射 `sp(视频) / tp(图片) / yp(音频) / qt(其他)`（分类 slug 为 2 字母短码，见 category-meta.ts）。
 - 媒体：封面 + 图片节点（最终成品优先，其余均匀抽取，图片上限 12 张/作品、视频截帧上限 6 段/作品），全部 sharp webp 化到 `public/uploads/liblib/<promptId>/`（图片 `image-<hash>.webp`，视频帧 `frame-<hash>.webp`）。
 - **视频截帧（上线当日补装 ffmpeg 8.0.1 后启用）**：ffmpeg 直读远端 mp4，带 `-referer`/`-user_agent` 防盗链，1s/3s/0.5s 三个时间点取最亮帧，webp 化后以 `type:"image"` + `nodeKind:"video"` 入库。路径 `FFMPEG_PATH || "ffmpeg"`。
 - Prompt 字段：`sourceSite="liblib.tv"`、`sourceUrl="https://www.liblib.tv/canvas?sourceProjectUuid=<uuid>"`、`sourceAuthor`、tags、likeCount、language=zh、status=published、adminAuthorId=操作管理员、userId=专用 importer 账号 `libtv`（role=importer，自动 upsert）。
@@ -48,14 +52,16 @@
 - **图片作品**（effect_type=9）：提示词在 `aigc_image_params.text2image_params.prompt`，模型在 `text2image_params.model_config.model_name`，大图在 `image.large_images.image_url`。
 - **视频作品**（effect_type=53）：提示词在 `aigc_image_params.text2video_params.video_gen_inputs.prompt`，模型在 `text2video_params.model_config.model_name`（Seedance 系列），视频地址在 `video.transcoded_video.origin.video_url`（短时效签名，约 1 小时过期）。
 - 每个作品生成一个正文分节：`[1] 图片生成｜｜<标题>` 或 `[1] 视频生成｜｜<标题>` + `中文提示词：…` + `模型：<模型名>`。
-- 分类：图片→`图片创作`，视频→`视频创作`；类型：图片→`image`，视频→`video`。
+- 分类：图片→`tp`，视频→`sp`；类型：图片→`image`，视频→`video`。
 - 媒体：
   - 图片作品：封面 + 大图，sharp webp 化到 `public/uploads/liblib/<promptId>/`。
   - 视频作品：封面（首帧图）+ ffmpeg 截帧（多时间点取最亮帧，与 LIBTV 同策略）。
 - **图片 URL 带签名过期**（x-expires），采集入库后存本地路径不受影响。
 - **视频 URL 短时效签名**（约 1 小时），入库任务中若已过期则跳过截帧，仅用封面。
-- **tags 约定**：`[0]=提示词 [1]=模型名 [2]=作品形态(image|video) [3]=视频地址(仅视频)`，入库时前 4 个剥离。
-- Prompt 字段：`sourceSite="jimeng.jianying.com"`、`sourceUrl="https://jimeng.jianying.com/ai-tool/work/<itemId>"`、`sourceAuthor`、tags（剥离前 4 个后的实际标签）、likeCount、language=zh、status=published、adminAuthorId=操作管理员、userId=专用 importer 账号 `jimeng`（role=importer，自动 upsert）。
+- **tags 约定（v0.5 起）**：`[0]="__meta__"+JSON（p=提示词 m=模型名 w=形态 v=视频地址 i=大图地址）`，后续为真实标签（模型名、文生图/文生视频）；入库时 `__meta__` 标签剥离，真实标签写入 `prompt.tags`。旧格式（`[0]=提示词 [1]=模型名 [2]=形态 [3]=视频地址`）入库代码保留兼容。
+- **标题兜底**：即梦 API 大部分作品 `common_attr.title` 为空，空标题自动取提示词前 30 字（加省略号），再兜底「即梦AI视频/即梦AI绘画」。
+- **大图取值**：`image.large_images` 是数组，取 `[0].image_url`（v0.4 误按对象取值导致大图丢失）。
+- Prompt 字段：`sourceSite="jimeng.jianying.com"`、`sourceUrl="https://jimeng.jianying.com/ai-tool/work/<itemId>"`、`sourceAuthor`、tags（真实标签：模型名、文生图/文生视频）、likeCount、language=zh、status=published、adminAuthorId=操作管理员、userId=专用 importer 账号 `jimeng`（role=importer，自动 upsert）。
 - 入库后双写 Meilisearch（`syncPromptToMeili`），立即可搜。
 
 ## 4. 接口（全部挂 PERMISSIONS.CRAWL_MANAGE）

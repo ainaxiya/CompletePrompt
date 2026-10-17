@@ -22,6 +22,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     { href: `${ADMIN_BASE}/settings/site`, label: "网站设置", icon: "🌐" },
     { href: `${ADMIN_BASE}/prompts`, label: "提示词管理", icon: "📝" },
     { href: `${ADMIN_BASE}/categories`, label: "提示词分类", icon: "🗂️" },
+    { href: `${ADMIN_BASE}/tags`, label: "Tag标签管理", icon: "🏷️" },
     { href: `${ADMIN_BASE}/collect`, label: "采集管理", icon: "📡", perm: PERMISSIONS.CRAWL_MANAGE },
     { href: `${ADMIN_BASE}/settings/publish`, label: "发布设置", icon: "📤" },
     { href: `${ADMIN_BASE}/users`, label: "用户管理", icon: "👥" },
@@ -77,7 +78,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           <div className="mt-4 flex items-center gap-2 px-2">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/logo/icon.png" alt="完整提示词" className="h-5 w-5 rounded object-cover opacity-80" />
-            <span className="text-[10px] tracking-widest text-zinc-600">FULL PROMPT v0.4</span>
+            <span className="text-[10px] tracking-widest text-zinc-600">FULL PROMPT v0.5</span>
           </div>
         </div>
       </aside>

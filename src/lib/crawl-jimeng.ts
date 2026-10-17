@@ -56,7 +56,7 @@ function parseItem(raw: any): JimengFeedItem | null {
   // 图片作品：提示词在 text2image_params；视频作品：提示词在 text2video_params.video_gen_inputs.prompt
   const t2i = raw?.aigc_image_params?.text2image_params;
   const t2v = raw?.aigc_image_params?.text2video_params;
-  const largeImg = raw?.image?.large_images;
+  const largeImg = raw?.image?.large_images?.[0];
   const videoInfo = raw?.video;
 
   let prompt = "";
@@ -73,9 +73,17 @@ function parseItem(raw: any): JimengFeedItem | null {
   const videoUrl = isVideo ? videoInfo?.transcoded_video?.origin?.video_url || null : null;
   const videoDurationMs = isVideo ? Number(videoInfo?.duration_ms) || 0 : 0;
 
+  // 标题：优先 attr.title，空则从提示词截取前 30 字
+  let title = String(attr.title || "").trim();
+  if (!title && prompt) {
+    title = prompt.replace(/\n/g, " ").trim().slice(0, 30);
+    if (prompt.length > 30) title += "…";
+  }
+  if (!title) title = isVideo ? "即梦AI视频" : "即梦AI绘画";
+
   return {
     itemId: String(attr.id),
-    title: String(attr.title || "").slice(0, 200),
+    title: title.slice(0, 200),
     coverUrl: attr.cover_url || null,
     coverWidth: Number(attr.cover_width) || 0,
     coverHeight: Number(attr.cover_height) || 0,
@@ -253,7 +261,7 @@ export function buildJimengPayload(item: JimengFeedItem): WorkPayload {
   return {
     content: lines.join("\n\n"),
     type: isVideo ? "video" : "image",
-    category: isVideo ? "视频创作" : "图片创作",
+    category: isVideo ? "sp" : "tp",
     coverUrl: item.coverUrl,
     mediaPlan,
     imageNodeCount: isVideo ? 0 : 1,

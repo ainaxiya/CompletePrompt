@@ -3,6 +3,8 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   // 关闭开发模式左下角的 Next.js DevTools 悬浮按钮（含 Preferences 面板）
   devIndicators: false,
+  // 移除响应头 X-Powered-By: Next.js（避免暴露技术栈）
+  poweredByHeader: false,
   experimental: {
     serverActions: { bodySizeLimit: "4mb" },
   },

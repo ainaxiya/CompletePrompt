@@ -26,31 +26,30 @@ export default function CardCover({
   );
 }
 
-// 无封面时的文字封面：用内容摘要填充，避免整页都是空占位
+// 无封面时的文字封面：大字摘要填充，视觉上接近一张排版图
 export function TextCover({ text, type = "text" }: { text: string; type?: string }) {
   const tint =
     type === "video"
-      ? "from-sky-500/15"
+      ? "from-sky-500/20"
       : type === "image"
-        ? "from-rose-500/15"
+        ? "from-rose-500/20"
         : type === "audio"
-          ? "from-amber-500/15"
-          : "from-emerald-500/15";
+          ? "from-amber-500/20"
+          : "from-emerald-500/20";
   return (
     <div
-      className={`relative flex h-full w-full flex-col justify-between overflow-hidden bg-gradient-to-br ${tint} via-zinc-900 to-zinc-950 p-3.5 text-left`}
+      className={`relative flex h-full w-full items-center justify-center overflow-hidden bg-gradient-to-br ${tint} via-zinc-900 to-zinc-950 px-5 py-4 text-center`}
     >
       {/* 装饰光晕 */}
-      <div className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-violet-500/10 blur-2xl" />
-      {/* 大号引号水印 */}
-      <span className="pointer-events-none select-none self-end font-serif text-5xl leading-none text-zinc-700/40">
-        ”
-      </span>
-      <p className="line-clamp-3 text-[13px] leading-relaxed text-zinc-300/90">
+      <div className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-violet-500/10 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-10 -left-10 h-32 w-32 rounded-full bg-emerald-500/10 blur-3xl" />
+      {/* 大字摘要：衬线字体更有"海报字"质感 */}
+      <p
+        className="line-clamp-3 font-serif text-[28px] font-semibold leading-snug tracking-wide text-zinc-100/95"
+        style={{ textShadow: "0 2px 14px rgba(0,0,0,0.45)" }}
+      >
         {text}
       </p>
-      {/* 底部灵感星芒点缀，呼应站点 LOGO */}
-      <span className="pointer-events-none absolute bottom-2.5 left-3.5 inline-block h-2 w-2 rounded-full bg-gradient-to-tr from-emerald-400 to-royal-400 shadow-[0_0_10px_rgba(16,185,129,0.7)]" />
     </div>
   );
 }

@@ -16,6 +16,9 @@ const DEFAULT_SITE = {
   logoIcon: "",
   favicon: "",
   appIcon: "",
+  bannerPc: "",
+  bannerMobile: "",
+  friendLinks: "",
   meiliSyncSeconds: 30,
 };
 
@@ -46,6 +49,11 @@ const siteSchema = z.object({
   logoIcon: z.string().max(500).optional(),
   favicon: z.string().max(500).optional(),
   appIcon: z.string().max(500).optional(),
+  // 首页 banner（PC 横版 / 手机竖版 URL）
+  bannerPc: z.string().max(500).optional(),
+  bannerMobile: z.string().max(500).optional(),
+  // 友情链接：每行「名称|URL」，最多 20 条
+  friendLinks: z.string().max(8000).optional(),
   // Meilisearch 自动同步间隔（秒）：0 = 关闭自动同步，仅手动重建索引
   meiliSyncSeconds: z.coerce.number().int().min(0).max(86400).optional(),
 });

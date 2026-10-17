@@ -4,16 +4,13 @@ import type { MediaItem } from "@/lib/media";
 export default function MediaGallery({ media }: { media: MediaItem[] }) {
   if (!media || media.length === 0) return null;
   return (
-    <div className="mb-5 space-y-3">
+    <div className="media-lightbox-src mb-5 space-y-3">
       {media.map((m, i) => {
         if (m.type === "image") {
           return (
-            <a
+            <div
               key={i}
-              href={m.url}
-              target="_blank"
-              rel="noopener"
-              className="block overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950/60"
+              className="block cursor-zoom-in overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950/60"
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
@@ -22,7 +19,7 @@ export default function MediaGallery({ media }: { media: MediaItem[] }) {
                 loading="lazy"
                 className="mx-auto max-h-[620px] w-full object-contain"
               />
-            </a>
+            </div>
           );
         }
         if (m.type === "video") {
@@ -63,14 +60,11 @@ export function SectionMedia({ items, altBase }: { items: MediaItem[]; altBase?:
         ? "grid-cols-2"
         : "grid-cols-2 sm:grid-cols-3";
   return (
-    <div className={`mt-3 grid gap-2 ${cols}`}>
+    <div className={`media-lightbox-src mt-3 grid gap-2 ${cols}`}>
       {items.map((m, i) => (
-        <a
+        <div
           key={i}
-          href={m.url}
-          target="_blank"
-          rel="noopener"
-          className={`group/media relative block overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950/70 transition hover:border-emerald-500/50 ${
+          className={`group/media relative block cursor-zoom-in overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950/70 transition hover:border-emerald-500/50 ${
             items.length === 1 ? "" : "aspect-square"
           }`}
         >
@@ -91,7 +85,7 @@ export function SectionMedia({ items, altBase }: { items: MediaItem[]; altBase?:
               {m.nodeKind === "video" ? "视频" : "图片"}节点 {m.nodeNo}
             </span>
           )}
-        </a>
+        </div>
       ))}
     </div>
   );

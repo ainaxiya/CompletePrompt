@@ -28,6 +28,17 @@ const patchSchema = z.object({
   type: z.enum(["text", "image", "video", "audio"]).optional(),
   category: z.string().max(50).optional(),
   model: z.string().max(60).nullable().optional(),
+  language: z.string().max(10).optional(),
+  promptCode: z.string().max(2000).nullable().optional(),
+  sourceSite: z.string().max(100).nullable().optional(),
+  sourceAuthor: z.string().max(100).nullable().optional(),
+  // 统计计数：后台可直接修改
+  likeCount: z.number().int().min(0).max(10_000_000).optional(),
+  favoriteCount: z.number().int().min(0).max(10_000_000).optional(),
+  viewCount: z.number().int().min(0).max(100_000_000).optional(),
+  commentCount: z.number().int().min(0).max(10_000_000).optional(),
+  // 发布时间：显式传入可修改/清空
+  publishedAt: z.string().datetime({ offset: true }).nullable().optional(),
   // 原作品链接：http(s) 绝对地址或站内相对路径；空串视为清空
   sourceUrl: z
     .string()
@@ -117,11 +128,13 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   } else if (d.description === null || d.description === undefined) {
     delete d.description;
   }
-  if (d.content || d.title) {
+  if (!d.language && (d.content || d.title)) {
     d.language = detectLang(`${d.title || existing.title}\n${stripHtml(effectiveContent)}`);
   }
-  // 首次发布时记录发布时间
-  if (d.status === "published" && !existing.publishedAt) {
+  // 发布时间：显式传入（含清空）优先；否则首次发布时记录当前时间
+  if ("publishedAt" in d) {
+    d.publishedAt = d.publishedAt ? new Date(d.publishedAt) : null;
+  } else if (d.status === "published" && !existing.publishedAt) {
     d.publishedAt = new Date();
   }
 

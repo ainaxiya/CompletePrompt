@@ -51,6 +51,67 @@ function StarIcon({ filled }: { filled: boolean }) {
   );
 }
 
+function BookmarkIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]"
+      fill="none" stroke="currentColor" strokeWidth="1.8"
+      strokeLinecap="round" strokeLinejoin="round">
+      <path d="M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+    </svg>
+  );
+}
+
+/**
+ * 浏览器收藏按钮：现代浏览器禁止脚本直接写书签，
+ * 因此点击后弹出快捷键提示（Ctrl/Cmd + D 或菜单操作）。
+ */
+export function BrowserBookmarkButton({ title }: { title: string }) {
+  const [show, setShow] = useState(false);
+  const isMac =
+    typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setShow((v) => !v)}
+        title={title}
+        className="group inline-flex items-center gap-2 rounded-full border border-zinc-700 bg-zinc-800/80 py-2 pl-3.5 pr-4 text-sm font-medium text-zinc-300 transition-all duration-200 hover:border-sky-500/50 hover:text-sky-300 active:scale-95"
+      >
+        <BookmarkIcon />
+        <span>保存到收藏夹</span>
+      </button>
+      {show && (
+        <>
+          <div
+            className="fixed inset-0 z-40"
+            onClick={() => setShow(false)}
+          />
+          <div className="absolute right-0 top-full z-50 mt-2 w-64 rounded-xl border border-zinc-700 bg-zinc-900 p-3 text-xs leading-relaxed text-zinc-300 shadow-xl">
+            <p className="mb-1.5 font-medium text-zinc-100">收藏本页到浏览器</p>
+            <p>
+              {isMac ? (
+                <>
+                  按 <kbd className="rounded bg-zinc-800 px-1.5 py-0.5 font-mono text-[11px] text-sky-300">⌘ Cmd</kbd>
+                  {" + "}
+                  <kbd className="rounded bg-zinc-800 px-1.5 py-0.5 font-mono text-[11px] text-sky-300">D</kbd>
+                </>
+              ) : (
+                <>
+                  按 <kbd className="rounded bg-zinc-800 px-1.5 py-0.5 font-mono text-[11px] text-sky-300">Ctrl</kbd>
+                  {" + "}
+                  <kbd className="rounded bg-zinc-800 px-1.5 py-0.5 font-mono text-[11px] text-sky-300">D</kbd>
+                </>
+              )}
+              ，或点击浏览器地址栏右侧的 ★ 图标。
+            </p>
+            <p className="mt-1.5 text-zinc-500">手机浏览器：菜单 → 添加书签 / 收藏</p>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export function ActionButtons({
   promptId,
   initialLikes,

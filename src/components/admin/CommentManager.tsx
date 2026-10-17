@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import Pagination from "@/components/Pagination";
 
 type Row = {
   id: number;
@@ -331,28 +332,10 @@ export default function CommentManager() {
       </div>
 
       {/* 分页 */}
-      <div className="flex items-center justify-between text-sm text-zinc-400">
-        <span>共 {total} 条</span>
-        <div className="flex items-center gap-2">
-          <button
-            disabled={page <= 1}
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            className="rounded-lg bg-zinc-800 px-3 py-1.5 text-xs hover:bg-zinc-700 disabled:opacity-40"
-          >
-            上一页
-          </button>
-          <span className="text-xs">
-            {page} / {totalPages}
-          </span>
-          <button
-            disabled={page >= totalPages}
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-            className="rounded-lg bg-zinc-800 px-3 py-1.5 text-xs hover:bg-zinc-700 disabled:opacity-40"
-          >
-            下一页
-          </button>
-        </div>
+      <div className="text-center text-sm text-zinc-400">
+        共 {total} 条，{page} / {totalPages}
       </div>
+      <Pagination page={page} totalPages={totalPages} onPage={(n) => setPage(n)} />
 
       {/* 全站开关 + 敏感词库 */}
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-4">

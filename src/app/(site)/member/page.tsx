@@ -5,6 +5,7 @@ import { getCurrentUser } from "@/lib/auth";
 import PromptCard from "@/components/PromptCard";
 import LogoutButton from "@/components/LogoutButton";
 import { getServerLocale, translate as t } from "@/lib/i18n";
+import { getCategoryMeta } from "@/lib/category-meta";
 
 export const dynamic = "force-dynamic";
 
@@ -122,7 +123,7 @@ export default async function MemberPage() {
                       <p className="mt-0.5 text-xs text-rose-400">{p.rejectReason}</p>
                     )}
                   </td>
-                  <td className="hidden px-3 py-2.5 text-xs text-zinc-500 sm:table-cell">{p.category}</td>
+                  <td className="hidden px-3 py-2.5 text-xs text-zinc-500 sm:table-cell">{getCategoryMeta(p.category).name[locale]}</td>
                   <td className="px-3 py-2.5 text-xs text-zinc-500">♥ {p.likeCount} · 👁 {p.viewCount}</td>
                   <td className="px-3 py-2.5 text-right">
                     <span className={`rounded px-1.5 py-0.5 text-xs ${STATUS_BADGE[p.status]}`}>

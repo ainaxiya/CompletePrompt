@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import PromptCard from "@/components/PromptCard";
+import Pagination from "@/components/Pagination";
 import { getServerLocale, translate as t } from "@/lib/i18n";
 
 export const dynamic = "force-dynamic";
@@ -41,7 +42,6 @@ export default async function HotPage({
   ]);
 
   const totalPages = Math.ceil(total / PAGE_SIZE);
-  const pageHref = (n: number) => `/hot?page=${n}`;
 
   return (
     <div>
@@ -64,19 +64,7 @@ export default async function HotPage({
       </div>
 
       {totalPages > 1 && (
-        <div className="mt-8 flex items-center justify-center gap-2">
-          {page > 1 && (
-            <Link href={pageHref(page - 1)} className="rounded-lg bg-zinc-800 px-4 py-2 text-sm hover:bg-zinc-700">
-              {t(locale, "common.prev")}
-            </Link>
-          )}
-          <span className="px-3 text-sm text-zinc-400">{page} / {totalPages}</span>
-          {page < totalPages && (
-            <Link href={pageHref(page + 1)} className="rounded-lg bg-zinc-800 px-4 py-2 text-sm hover:bg-zinc-700">
-              {t(locale, "common.next")}
-            </Link>
-          )}
-        </div>
+        <Pagination page={page} totalPages={totalPages} basePath="/hot" />
       )}
     </div>
   );

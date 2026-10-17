@@ -2,6 +2,7 @@ import Link from "next/link";
 import { translate, type Locale } from "@/lib/i18n";
 import CardCover, { TextCover, Placeholder } from "@/components/CardCover";
 import { plainExcerpt } from "@/lib/excerpt";
+import { getCategoryMeta } from "@/lib/category-meta";
 
 const TYPE_KEY: Record<string, "type.video" | "type.image" | "type.audio" | "type.text"> = {
   video: "type.video",
@@ -15,15 +16,6 @@ const TYPE_CLS: Record<string, string> = {
   image: "bg-rose-500/15 text-rose-300",
   audio: "bg-amber-500/15 text-amber-300",
   text: "bg-emerald-500/15 text-emerald-300",
-};
-
-const CAT_CLS: Record<string, string> = {
-  AI创作: "bg-cyan-500/15 text-cyan-300",
-  开发: "bg-sky-500/15 text-sky-300",
-  视频: "bg-sky-500/15 text-sky-300",
-  网络安全: "bg-rose-500/15 text-rose-300",
-  游戏制作: "bg-emerald-500/15 text-emerald-300",
-  其他: "bg-zinc-700/50 text-zinc-300",
 };
 
 export default function PromptCard({
@@ -80,8 +72,8 @@ export default function PromptCard({
       <div className="flex flex-1 flex-col p-4">
         <div className="mb-2 flex flex-wrap items-center gap-2">
           {p.category && (
-            <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${CAT_CLS[p.category] || CAT_CLS.其他}`}>
-              {p.category}
+            <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${getCategoryMeta(p.category).bg} ${getCategoryMeta(p.category).fg}`}>
+              {getCategoryMeta(p.category).name[locale]}
             </span>
           )}
           <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${TYPE_CLS[p.type] || TYPE_CLS.text}`}>

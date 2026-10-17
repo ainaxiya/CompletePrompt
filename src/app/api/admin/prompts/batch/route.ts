@@ -66,9 +66,15 @@ export async function POST(req: NextRequest) {
       break;
     }
     case "publish": {
+      // 发布时间只在首次发布时写入（publishedAt 为空的才补），已发布过的保留原时间；
+      // 更新时间由 Prisma @updatedAt 自动刷新为当前时间
+      await db.prompt.updateMany({
+        where: { id: { in: ids }, publishedAt: null },
+        data: { publishedAt: new Date() },
+      });
       const r = await db.prompt.updateMany({
         where: { id: { in: ids } },
-        data: { status: "published", rejectReason: null, publishedAt: new Date() },
+        data: { status: "published", rejectReason: null },
       });
       affected = r.count;
       // 同步搜索索引：需要完整 prompt 对象
